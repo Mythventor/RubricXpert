@@ -12,7 +12,7 @@ const HomePage = () => {
               <span className="text-xl font-bold text-blue-600">RubricXpert</span>
             </div>
             <div className="flex items-center space-x-4">
-              <a href="#" className="text-gray-600 hover:text-blue-600">About Us</a>
+              <a href="/#about" className="text-gray-600 hover:text-blue-600">About Us</a>
               <a href="#" className="text-gray-600 hover:text-blue-600">Contact Us</a>
             </div>
           </div>
