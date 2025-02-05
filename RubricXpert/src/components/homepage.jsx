@@ -4,22 +4,27 @@ import { useNavigate } from 'react-router-dom';
 
 const HomePage = () => {
   const navigate = useNavigate();  
-  const [file, setFile] = useState(null);  
+  const [essayFile, setEssayFile] = useState(null);
+  const [rubricFile, setRubricFile] = useState(null);
 
-  // Function to handle file upload
-  const handleFileUpload = (event) => {
+  // Function to handle essay upload
+  const handleEssayUpload = (event) => {
     const uploadedFile = event.target.files[0];
-    setFile(uploadedFile);
+    setEssayFile(uploadedFile);
+  };
+
+  // Function to handle rubric upload
+  const handleRubricUpload = (event) => {
+    const uploadedFile = event.target.files[0];
+    setRubricFile(uploadedFile);
   };
 
   // Function to handle analysis
   const handleAnalyze = async () => {
-    // 1. Validate if a file is uploaded
-    // 2. Send the file to your backend/API
-    // 3. Wait for the response
-    // 4. Navigate to results page
-
-    // For now, we'll just navigate to the results page
+    if (!essayFile || !rubricFile) {
+      alert('Please upload both essay and rubric files');
+      return;
+    }
     navigate('/results');
   };
 
@@ -51,34 +56,71 @@ const HomePage = () => {
           </p>
 
           {/* Upload Section */}
-          <div className="max-w-lg mx-auto bg-white p-8 rounded-lg shadow-md">
-            <div className="mb-6">
-              <label className="block">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 cursor-pointer">
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                    accept=".pdf,.doc,.docx"
-                  />
-                  <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                  <p className="mt-2 text-sm text-gray-600">
-                    Drag and drop your files here, or click to select files
+          <div className="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-md">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Essay Upload Box */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Upload Essay</h3>
+                <label className="block">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 cursor-pointer">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleEssayUpload}
+                      accept=".pdf,.doc,.docx"
+                    />
+                    <Upload className="mx-auto h-10 w-10 text-gray-400" />
+                    <p className="mt-2 text-sm text-gray-600">
+                      Drop your essay here
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      PDF, DOC, DOCX
+                    </p>
+                  </div>
+                </label>
+                {essayFile && (
+                  <p className="mt-2 text-sm text-green-600">
+                    Essay: {essayFile.name}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Supported formats: PDF, DOC, DOCX
+                )}
+              </div>
+
+              {/* Rubric Upload Box */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Upload Rubric</h3>
+                <label className="block">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 cursor-pointer">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleRubricUpload}
+                      accept=".pdf,.doc,.docx"
+                    />
+                    <Upload className="mx-auto h-10 w-10 text-gray-400" />
+                    <p className="mt-2 text-sm text-gray-600">
+                      Drop your rubric here
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      PDF, DOC, DOCX
+                    </p>
+                  </div>
+                </label>
+                {rubricFile && (
+                  <p className="mt-2 text-sm text-green-600">
+                    Rubric: {rubricFile.name}
                   </p>
-                </div>
-              </label>
-              {file && (
-                <p className="mt-2 text-sm text-green-600">
-                  File selected: {file.name}
-                </p>
-              )}
+                )}
+              </div>
             </div>
+
             <button 
               onClick={handleAnalyze}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              disabled={!essayFile || !rubricFile}
+              className={`w-full mt-6 py-2 px-4 rounded-md ${
+                (!essayFile || !rubricFile)
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              } text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
             >
               Analyze Essay
             </button>
