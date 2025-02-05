@@ -104,7 +104,7 @@ def analyze_essay():
         4. General feedback and areas for improvement
 
         Format your response as follows:
-        CRITERION_NAME: [score]/100
+        **CRITERION_NAME:** [score]/100
         Feedback: [your feedback]
 
         OVERALL SCORE: $[score]$
@@ -112,7 +112,8 @@ def analyze_essay():
         GENERAL FEEDBACK:
         [your feedback]
 
-        IMPORTANT: Make sure to format the overall score within dollar signs, like this: $85$
+        IMPORTANT: Make sure to format the overall score within dollar signs, like this: $85$, and criterion like this: **CRITERION_NAME:** [score]/100
+        Feedback: [your feedback], and importantly no ** before and after overall score.
         """
         # Call OpenAI API
         completion = client.chat.completions.create(
