@@ -1,7 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Upload } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';  
 
 const HomePage = () => {
+  const navigate = useNavigate();  
+  const [file, setFile] = useState(null);  
+
+  // Function to handle file upload
+  const handleFileUpload = (event) => {
+    const uploadedFile = event.target.files[0];
+    setFile(uploadedFile);
+  };
+
+  // Function to handle analysis
+  const handleAnalyze = async () => {
+    // 1. Validate if a file is uploaded
+    // 2. Send the file to your backend/API
+    // 3. Wait for the response
+    // 4. Navigate to results page
+
+    // For now, we'll just navigate to the results page
+    navigate('/results');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation */}
@@ -32,17 +53,33 @@ const HomePage = () => {
           {/* Upload Section */}
           <div className="max-w-lg mx-auto bg-white p-8 rounded-lg shadow-md">
             <div className="mb-6">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 cursor-pointer">
-                <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-sm text-gray-600">
-                  Drag and drop your files here, or click to select files
+              <label className="block">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 cursor-pointer">
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    accept=".pdf,.doc,.docx"
+                  />
+                  <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                  <p className="mt-2 text-sm text-gray-600">
+                    Drag and drop your files here, or click to select files
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Supported formats: PDF, DOC, DOCX
+                  </p>
+                </div>
+              </label>
+              {file && (
+                <p className="mt-2 text-sm text-green-600">
+                  File selected: {file.name}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Supported formats: PDF, DOC, DOCX
-                </p>
-              </div>
+              )}
             </div>
-            <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <button 
+              onClick={handleAnalyze}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
               Analyze Essay
             </button>
           </div>
