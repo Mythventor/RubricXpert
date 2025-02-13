@@ -1,28 +1,44 @@
-# RubricXpert
-RubricXpert is an AI-powered essay analysis tool that provides instant, detailed feedback based on specific rubric criteria. Perfect for students, educators, and professionals seeking to improve their writing quality.
+# 📝 RubricXpert  
 
-# About the Project
-RubricXpert provides detailed assessment of essays based on rubric criteria, offering actionable suggestions for improvement and interactive feedback. The platform aims to streamline the writing process and help users produce higher quality work that meets specific requirements.
+**RubricXpert** is an AI-powered essay analysis tool that provides **instant, detailed feedback** based on specific rubric criteria. It helps students, educators, and professionals refine their writing to meet high standards effortlessly.  
 
-## 🚀 Features
+## 📌 About the Project  
 
-- Instant AI-powered essay analysis
-- Rubric-based feedback system
-- Detailed improvement suggestions
-- User-friendly interface
-- Support for multiple file formats
+RubricXpert enhances the essay-writing process by **analyzing text against rubric-based criteria** and offering **actionable suggestions** for improvement. The tool is designed to provide **interactive and constructive feedback**, ensuring that users produce high-quality work aligned with specific requirements.  
 
-## 🏁 Getting Started
+---
 
-### Prerequisites
+## 🚀 Features  
 
-- Node.js (v14.0.0 or higher)
-- npm (v6.0.0 or higher)
+- ✅ **Instant AI-Powered Essay Analysis** – Get immediate feedback on your writing.  
+- ✅ **Rubric-Based Feedback System** – Ensure your work meets grading criteria.  
+- ✅ **Detailed Improvement Suggestions** – Actionable insights to enhance writing quality.  
+- ✅ **User-Friendly Interface** – Simple and intuitive design for easy navigation.  
+- ✅ **Supports Multiple File Formats** – Upload and analyze essays in different formats.  
 
-## Built with
-* React.js
-* Node.js
-* OpenAI API
+---
+
+## 🏁 Getting Started  
+
+### 📋 Prerequisites  
+
+Before installing, ensure you have the following dependencies installed on your system:  
+
+- **Node.js** (v14.0.0 or higher) – [Download](https://nodejs.org/)  
+- **npm** (v6.0.0 or higher) – Installed with Node.js  
+
+### 🔧 Installation  
+
+```bash
+# Clone the repository
+git clone https://github.com/your-repo/rubricxpert.git
+cd rubricxpert
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm start
 
 
 # Contributors
