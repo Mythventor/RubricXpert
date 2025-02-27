@@ -48,7 +48,9 @@ cd backend
 pip3 install flask flask-cors python-docx PyPDF2 openai python-dotenv
 python3 app.py
 
-# Enjoy the power of RubricXpert
+# Enjoy the power of RubricXpert :)
+
+
 ```
 
 # Contributors
