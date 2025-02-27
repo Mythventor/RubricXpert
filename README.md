@@ -38,8 +38,15 @@ cd rubricxpert
 npm install
 
 # Start the development server
-npm start
+npm run dev
 
+# Backend
+cd src
+cd backend
+pip3 install flask flask-cors python-docx PyPDF2 openai python-dotenv
+python3 app.py
+
+# Enjoy the power of RubricXpert
 ```
 
 # Contributors
