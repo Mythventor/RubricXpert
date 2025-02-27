@@ -40,9 +40,10 @@ npm install
 # Start the development server
 npm run dev
 
-# Backend
+# Backend (in a split/separate terminal)
 cd src
 cd backend
+# Ensure you have a valid OpenAI API Key in the .env file
 pip3 install flask flask-cors python-docx PyPDF2 openai python-dotenv
 python3 app.py
 
