@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { MessageSquare, Send } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { parseFeedback } from './feedbackParser';
@@ -14,35 +14,100 @@ const ResultsPage = () => {
   // Local state for parsed feedback
   const [parsedFeedback, setParsedFeedback] = useState(null);
   
-  // Chat state (for clarification chat, as in your current code)
+  // Chat state
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Reference for auto-scrolling chat
+  const chatContainerRef = useRef(null);
 
   // If no feedback was passed, use fallback data (or navigate back)
   useEffect(() => {
+    if (rawFeedback) {
       const parsed = parseFeedback(rawFeedback);
       setParsedFeedback(parsed);
-    }, [rawFeedback]);
+    } else {
+      // Optionally navigate back if no feedback
+      // navigate('/');
+    }
+  }, [rawFeedback, navigate]);
 
-  const handleSendMessage = (e) => {
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatHistory]);
+
+  const handleSendMessage = async (e) => {
     e.preventDefault();
+    
     if (chatMessage.trim()) {
-      setChatHistory([...chatHistory, { user: true, message: chatMessage }]);
-      setTimeout(() => {
-        setChatHistory((prev) => [
-          ...prev,
-          { 
-            user: false, 
-            message: "I can help clarify the feedback. What specific aspect would you like to know more about?" 
-          }
-        ]);
-      }, 1000);
+      // Add user message to chat
+      const newUserMessage = { user: true, message: chatMessage };
+      setChatHistory(prev => [...prev, newUserMessage]);
+      
+      // Clear input field
       setChatMessage('');
+      
+      // Show loading state
+      setIsLoading(true);
+      
+      try {
+        // Create payload with message, feedback context, and chat history
+        const payload = {
+          message: chatMessage,
+          feedback: rawFeedback, // Send the raw feedback for context
+          chatHistory: chatHistory // Send chat history for context
+        };
+        
+        // Make API call to your backend
+        const response = await fetch('http://127.0.0.1:5000/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Add AI response to chat
+          setChatHistory(prev => [...prev, { user: false, message: data.response }]);
+        } else {
+          // Handle error from API
+          setChatHistory(prev => [...prev, { 
+            user: false, 
+            message: "Sorry, I encountered an error. Please try again." 
+          }]);
+        }
+      } catch (error) {
+        console.error('Error sending message:', error);
+        // Add error message to chat
+        setChatHistory(prev => [...prev, { 
+          user: false, 
+          message: "Sorry, there was a problem connecting to the server. Please try again later." 
+        }]);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   if (!parsedFeedback) {
-    return <p>Loading feedback...</p>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-xl text-gray-600">Loading feedback...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -142,35 +207,65 @@ const ResultsPage = () => {
               <MessageSquare className="mr-2 h-6 w-6" />
               Ask for Clarification
             </h2>
-            <div className="flex-grow overflow-y-auto mb-4 space-y-4">
-              {chatHistory.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex ${msg.user ? 'justify-end' : 'justify-start'}`}
-                >
+            <div 
+              ref={chatContainerRef}
+              className="flex-grow overflow-y-auto mb-4 space-y-4 max-h-[500px] p-2"
+            >
+              {chatHistory.length === 0 ? (
+                <div className="text-center text-gray-500 my-8">
+                  <p>Ask questions about your feedback to get clarification</p>
+                  <p className="text-sm mt-2">Examples:</p>
+                  <ul className="text-sm mt-1 space-y-1">
+                    <li>"How can I improve my thesis statement?"</li>
+                    <li>"Can you explain what you meant by lack of coherence?"</li>
+                    <li>"What are some specific ways to enhance my evidence?"</li>
+                  </ul>
+                </div>
+              ) : (
+                chatHistory.map((msg, index) => (
                   <div
-                    className={`max-w-xs md:max-w-md rounded-lg p-3 ${
-                      msg.user
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
+                    key={index}
+                    className={`flex ${msg.user ? 'justify-end' : 'justify-start'}`}
                   >
-                    {msg.message}
+                    <div
+                      className={`max-w-xs md:max-w-md rounded-lg p-3 ${
+                        msg.user
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                  </div>
+                ))
+              )}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 text-gray-800 rounded-lg p-3 flex items-center space-x-2">
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }}></div>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
             <form onSubmit={handleSendMessage} className="flex gap-2">
               <input
                 type="text"
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}
+                disabled={isLoading}
                 placeholder="Type your question here..."
                 className="flex-grow rounded-md border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 type="submit"
-                className="bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                disabled={isLoading || !chatMessage.trim()}
+                className={`text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  isLoading || !chatMessage.trim() 
+                    ? 'bg-blue-400 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 <Send className="h-5 w-5" />
               </button>

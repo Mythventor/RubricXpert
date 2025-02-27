@@ -11,7 +11,8 @@ from PyPDF2 import PdfReader
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}})
+
 
 
 # Configure upload folder
@@ -140,6 +141,64 @@ def analyze_essay():
 
     except Exception as e:
         print(f"Error: {str(e)}")  # For debugging
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/chat', methods=['POST'])
+def handle_chat_message():
+    try:
+        data = request.json
+        if not data or 'message' not in data:
+            return jsonify({'error': 'Missing message'}), 400
+            
+        user_message = data['message']
+        feedback_context = data.get('feedback', '')
+        chat_history = data.get('chatHistory', [])
+        
+        # Format the chat history for the OpenAI API
+        formatted_history = []
+        for msg in chat_history:
+            role = "user" if msg.get('user', False) else "assistant"
+            formatted_history.append({"role": role, "content": msg['message']})
+        
+        # Create prompt for OpenAI
+        system_prompt = f"""You are an expert essay evaluator assistant. 
+        Your task is to clarify and explain feedback given on an essay. 
+        
+        FEEDBACK CONTEXT:
+        {feedback_context}
+        
+        Provide helpful, concise explanations about the feedback. If the student asks for 
+        improvement suggestions, provide specific, actionable advice based on the feedback context.
+        """
+        
+        # Add the system message at the beginning
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add the chat history
+        messages.extend(formatted_history)
+        
+        # Add the current user message
+        messages.append({"role": "user", "content": user_message})
+        
+        # Call OpenAI API
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",  # or your preferred model
+            messages=messages
+        )
+
+        # Extract the response
+        assistant_response = completion.choices[0].message.content
+
+        return jsonify({
+            'success': True,
+            'response': assistant_response
+        })
+
+    except Exception as e:
+        print(f"Error in chat handler: {str(e)}")  # For debugging
         return jsonify({
             'success': False,
             'error': str(e)
