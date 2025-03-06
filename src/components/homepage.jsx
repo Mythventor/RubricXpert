@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { TypeAnimation } from 'react-type-animation'; 
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -71,8 +72,26 @@ const HomePage = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center py-16">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Get Expert Feedback on Your Essays
-          </h1>
+            Get Expert Feedback on Your
+            <TypeAnimation
+              sequence={[
+                ' Essays',
+                2000, // wait 2s
+                ' Research Papers',
+                2000, // wait 2s
+                ' Personal Statements',
+                2000, // wait 2s
+              ' Cover Letters',
+                2000, // wait 2s
+              ' Academic Writing',
+                2000 // wait 2s
+                ]}
+      wrapper="span"
+      speed={50}
+      style={{ paddingLeft: '5px' }}
+      repeat={Infinity}
+      />
+        </h1>
           <p className="text-xl text-gray-600 mb-8">
             Upload your essay and rubric for instant feedback
           </p>
