@@ -22,14 +22,22 @@ const ResultsPage = () => {
   // Reference for auto-scrolling chat
   const chatContainerRef = useRef(null);
 
+  // Helper function to convert a score to a level
+  const getLevel = (score) => {
+    if (score > 90) return "Excellent";
+    if (score > 80) return "Great";
+    if (score > 60) return "Average";
+    return "Needs Improvement";
+  };
+
   // If no feedback was passed, use fallback data (or navigate back)
   useEffect(() => {
     if (rawFeedback) {
+      console.log('Raw feedback:', rawFeedback);
       const parsed = parseFeedback(rawFeedback);
       setParsedFeedback(parsed);
     } else {
-      // Optionally navigate back if no feedback
-      // navigate('/');
+      console.error('No feedback data found');
     }
   }, [rawFeedback, navigate]);
 
@@ -132,41 +140,14 @@ const ResultsPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Feedback Section */}
           <div className="space-y-6">
-            {/* Overall Score & General Feedback */}
+            {/* Overall Analysis & General Feedback */}
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Overall Score</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Overall Analysis</h2>
               <div className="flex items-center justify-center">
-                <div className="relative w-32 h-32">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-4xl font-bold text-blue-600">
-                      {parsedFeedback.overallScore}%
-                    </span>
-                  </div>
-                  <svg className="transform -rotate-90 w-32 h-32">
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r="60"
-                      stroke="currentColor"
-                      strokeWidth="8"
-                      fill="transparent"
-                      className="text-gray-200"
-                    />
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r="60"
-                      stroke="currentColor"
-                      strokeWidth="8"
-                      fill="transparent"
-                      strokeDasharray={`${2 * Math.PI * 60}`}
-                      strokeDashoffset={`${2 * Math.PI * 60 * (1 - parsedFeedback.overallScore / 100)}`}
-                      className="text-blue-600"
-                    />
-                  </svg>
-                </div>
+                <h2 className="text-4xl font-bold text-blue-600">
+                  {getLevel(parsedFeedback.overallScore)}
+                </h2>
               </div>
-              {/* General Feedback displayed under overall score */}
               {parsedFeedback.generalFeedback && (
                 <div className="mt-6">
                   <p className="text-gray-600">{parsedFeedback.generalFeedback}</p>
@@ -185,14 +166,8 @@ const ResultsPage = () => {
                         {criterion.name}
                       </h3>
                       <span className="text-blue-600 font-semibold">
-                        {criterion.score}/100
+                        {getLevel(criterion.score)}
                       </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                      <div 
-                        className="bg-blue-600 rounded-full h-2.5"
-                        style={{ width: `${(criterion.score / 100) * 100}%` }}
-                      ></div>
                     </div>
                     <p className="text-gray-600">{criterion.feedback}</p>
                   </div>
@@ -261,7 +236,7 @@ const ResultsPage = () => {
               <button
                 type="submit"
                 disabled={isLoading || !chatMessage.trim()}
-                className={`text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                className={`text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isLoading || !chatMessage.trim() 
                     ? 'bg-blue-400 cursor-not-allowed' 
                     : 'bg-blue-600 hover:bg-blue-700'
