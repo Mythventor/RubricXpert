@@ -6,13 +6,14 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from docx import Document
 from PyPDF2 import PdfReader
+import re
+import json
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}})
-
+CORS(app)
 
 
 # Configure upload folder
@@ -40,13 +41,30 @@ def convert_to_text(file_path):
     except Exception as e:
         return f"Error converting file: {str(e)}"
 
+import pdfplumber
+
 def convert_pdf(file_path):
-    """Convert PDF to text."""
-    reader = PdfReader(file_path)
-    text = ""
+    """Extract rubric text from a PDF while preserving structure."""
+    text = []
+
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text.append(page_text.strip())  # Strips unnecessary spaces
+    
+    final_text = "\n\n".join(text)  # Keep paragraphs separate
+    print(final_text)  # Debugging print
+    return final_text
+"""
     for page in reader.pages:
-        text += page.extract_text()
-    return text
+        page_text = page.extract_text()
+        if page_text:
+            text.append(page_text)  # store extracted text from each page
+    final_text = " ".join(text) # join all pages into one text block
+    print(final_text)
+    return final_text
+"""
 
 def convert_docx(file_path):
     """Convert DOCX to text."""
@@ -60,6 +78,47 @@ def convert_txt(file_path):
     """Convert TXT to text."""
     with open(file_path, 'r', encoding='utf-8') as file:
         return file.read()
+    
+def extract_rubric_from_text(rubric_text):
+    """Uses OpenAI API to extract and structure the rubric properly."""
+
+    prompt = f"""
+    You are an AI trained to analyze essay grading rubrics. Your task is to extract 
+    and structure the grading criteria and their respective scoring levels in a JSON format.
+
+    Given the following essay grading rubric:
+
+    {rubric_text}
+
+    Extract the grading criteria and their descriptions, returning the output in JSON format like this:
+
+    {{
+        "Criteria": [
+            {{
+                "Name": "Criterion Name",
+                "Scores": [
+                    {{"Score": 5, "Description": "Description for score 5"}},
+                    {{"Score": 4, "Description": "Description for score 4"}},
+                    {{"Score": 3, "Description": "Description for score 3"}},
+                    {{"Score": 2, "Description": "Description for score 2"}},
+                    {{"Score": 1, "Description": "Description for score 1"}}
+                ]
+            }},
+            ...
+        ]
+    }}
+    Make sure to extract all relevant details while preserving clarity.
+    """
+    print("\nDEBUG: Sending rubric extraction prompt to OpenAI...")
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2
+    )
+
+    structured_rubric = response.choices[0].message.content 
+    #print("\nDEBUG: OpenAI Rubric Response:", structured_rubric[:500])  # Print first 500 chars
+    return structured_rubric  # This will be in JSON format
 
 @app.route('/test', methods=['GET'])
 def test():
@@ -81,124 +140,112 @@ def analyze_essay():
         essay_file.save(essay_path)
         rubric_file.save(rubric_path)
 
-        # Convert files to text
         essay_text = convert_to_text(essay_path)
         rubric_text = convert_to_text(rubric_path)
+        rubric_parsed = extract_rubric_from_text(rubric_text)
 
-        # Clean up temporary files
-        os.remove(essay_path)
-        os.remove(rubric_path)
+        # Ensure temp files are removed safely
+        if os.path.exists(essay_path):
+            os.remove(essay_path)
+        if os.path.exists(rubric_path):
+            os.remove(rubric_path)
 
-        # Create prompt for OpenAI
-        prompt = f"""Please analyze this essay according to the given rubric.
-        
-        RUBRIC:
-        {rubric_text}
+        # Split rubric into sections
+        # ✅ Step 1: Convert JSON string to a Python dictionary
+        try:
+            rubric_json = json.loads(rubric_parsed)  # Parse the JSON
+            rubric_sections = rubric_json.get("Criteria", [])  # Extract "Criteria" safely
+        except json.JSONDecodeError as e:
+            print("\nDEBUG: Failed to parse rubric JSON:", str(e))
+            rubric_sections = []  # Handle parsing failure
 
-        ESSAY:
-        {essay_text}
+        feedback_responses = []
+        print("DEBUG: Analyzing Essay Based on Rubric")
 
-        Please provide:
-        1. A numerical score for each rubric criterion (out of 100)
-        2. Specific feedback and suggestions for each criterion
-        3. Overall score (out of 100) formatted exactly as $SCORE$ (e.g., $85$)
-        4. General feedback and areas for improvement
+        for section in rubric_sections:
+            criterion_name = section.get("Name", "Unnamed Criterion")
+            scores = section.get("Scores", [])
 
-        Format your response as follows:
-        **CRITERION_NAME:** [score]/100
-        Feedback: [your feedback]
-
-        OVERALL SCORE: $[score]$
-        
-        GENERAL FEEDBACK:
-        [your feedback]
-
-        IMPORTANT: Make sure to format the overall score within dollar signs, like this: $85$, and criterion like this: **CRITERION_NAME:** [score]/100
-        Feedback: [your feedback], and importantly no ** before and after overall score.
-        """
-        # Call OpenAI API
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",  # or your preferred model
-            messages=[
-                {
-                    "role": "system", 
-                    "content": "You are an expert essay evaluator. Provide detailed, constructive feedback based on the given rubric."
-                },
-                {
-                    "role": "user", 
-                    "content": prompt
-                }
-            ]
-        )
-
-        # Extract and structure the response
-        feedback = completion.choices[0].message.content
-
-        return jsonify({
-            'success': True,
-            'feedback': feedback
-        })
-
-    except Exception as e:
-        print(f"Error: {str(e)}")  # For debugging
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/chat', methods=['POST'])
-def handle_chat_message():
-    try:
-        data = request.json
-        if not data or 'message' not in data:
-            return jsonify({'error': 'Missing message'}), 400
+            # Ensure 'scores' is a list and format properly
+            rubric_formatted = "\n".join([
+                f"- **Score {len(scores) - idx}:** {score.get('Description', 'No description')}"
+                for idx, score in enumerate(scores) if isinstance(score, dict)
+            ])
             
-        user_message = data['message']
-        feedback_context = data.get('feedback', '')
-        chat_history = data.get('chatHistory', [])
-        
-        # Format the chat history for the OpenAI API
-        formatted_history = []
-        for msg in chat_history:
-            role = "user" if msg.get('user', False) else "assistant"
-            formatted_history.append({"role": role, "content": msg['message']})
-        
-        # Create prompt for OpenAI
-        system_prompt = f"""You are an expert essay evaluator assistant. 
-        Your task is to clarify and explain feedback given on an essay. 
-        
-        FEEDBACK CONTEXT:
-        {feedback_context}
-        
-        Provide helpful, concise explanations about the feedback. If the student asks for 
-        improvement suggestions, provide specific, actionable advice based on the feedback context.
-        """
-        
-        # Add the system message at the beginning
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        # Add the chat history
-        messages.extend(formatted_history)
-        
-        # Add the current user message
-        messages.append({"role": "user", "content": user_message})
-        
-        # Call OpenAI API
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",  # or your preferred model
-            messages=messages
-        )
+            print(f"Criterion: {criterion_name}\n{rubric_formatted}\n")
+            # Extract numerical score values, sort them, and get the range
+            score_values = sorted([
+                score.get("Value") for score in scores if isinstance(score, dict) and isinstance(score.get("Value"), (int, float))
+            ])
 
-        # Extract the response
-        assistant_response = completion.choices[0].message.content
+            # Ensure min_score and max_score are always assigned based on number of scores
+            if score_values:
+                min_score, max_score = score_values[0], score_values[-1]
+            else:
+                min_score, max_score = 1, len(scores)  # Set fallback to number of rubric levels
 
+            prompt = f"""
+            You are an AI trained to evaluate essays using a structured grading rubric.
+
+            ### Essay to Evaluate:
+            {essay_text}
+
+            ### Grading Criterion: {criterion_name}
+
+            The essay will be scored based on the following standards:
+            {rubric_formatted}
+
+            **Task:** Evaluate the essay based on this criterion. Provide:
+            1. The most appropriate score ({min_score} to {max_score}).
+            2. Justification for the given score.
+            3. Suggestions on how to improve the essay to achieve a higher score.
+
+            Respond in the following JSON format:
+            {{
+                "criterion": "{criterion_name}",
+                "score": (1-4),
+                "feedback": "Your feedback explanation."
+            }}
+            """
+
+            # Call GPT-4 API for evaluation
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are an expert essay evaluator. Provide structured, detailed feedback."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=800
+            )
+
+            # Extract response
+            feedback = response.choices[0].message.content 
+            print("\nDEBUG: GPT-4 Response Received:", feedback[:500])
+
+            # Attempt to extract score using regex
+            match = re.search(r'"score":\s*(\d)', feedback)
+            score = int(match.group(1)) if match else None
+
+            # Parse the JSON response from OpenAI
+            try:
+                feedback_json = json.loads(feedback)
+            except json.JSONDecodeError:
+                feedback_json = {"criterion": criterion_name, "score": score, "feedback": feedback.strip()}
+
+            feedback_responses.append(feedback_json)
+            print("START OF NEXT CRITERION-----")
+        
+        print("\nDEBUG: Final Combined Feedback JSON:")
+        print(json.dumps(feedback_responses, indent=4))
+        
         return jsonify({
             'success': True,
-            'response': assistant_response
+            'results': feedback_responses
         })
 
     except Exception as e:
-        print(f"Error in chat handler: {str(e)}")  # For debugging
+        print(f"Server Error: {str(e)}")  # Debug print
         return jsonify({
             'success': False,
             'error': str(e)
