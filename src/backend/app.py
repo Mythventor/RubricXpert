@@ -203,7 +203,7 @@ def analyze_essay():
             Respond in the following JSON format:
             {{
                 "criterion": "{criterion_name}",
-                "score": (1-4),
+                "score": ({min_score}-{max_score}),
                 "feedback": "Your feedback explanation."
             }}
             """
@@ -238,7 +238,7 @@ def analyze_essay():
         
         print("\nDEBUG: Final Combined Feedback JSON:")
         print(json.dumps(feedback_responses, indent=4))
-        
+
         return jsonify({
             'success': True,
             'results': feedback_responses
