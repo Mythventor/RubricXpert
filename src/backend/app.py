@@ -136,7 +136,8 @@ Format your response using the following structure:
 **Overall Analysis**: [score]/100
 Feedback: [your overall feedback here]
 
-Ensure the response is formatted exactly as specified.
+Ensure the response is formatted exactly as specified. In the feedback, don't make any bullet points or 
+listing points using numbers like 1. 2. 3., just write text!!!
 """
         overall_response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -176,7 +177,8 @@ Format your response using the following structure:
 **{criterion_name}**: [score]/100
 Feedback: [your feedback here]
 
-Ensure the response is formatted exactly as specified This is very Important, you must follow the exact format!!!
+Ensure the response is formatted exactly as specified. In the feedback, don't make any bullet points or 
+listing points using numbers like 1. 2. 3., just write text!!!
 """
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
