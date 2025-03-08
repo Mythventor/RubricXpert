@@ -31,7 +31,7 @@ Before installing, ensure you have the following dependencies installed on your 
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-repo/rubricxpert.git
+git clone https://github.com/Mythventor/RubricXpert
 cd rubricxpert
 
 # Install dependencies
