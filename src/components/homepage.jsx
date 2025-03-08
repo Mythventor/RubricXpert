@@ -88,7 +88,7 @@ const HomePage = () => {
                 2000 // wait 2s
                 ]}
       wrapper="span"
-      speed={50}
+      speed={25}
       style={{ paddingLeft: '5px' }}
       repeat={Infinity}
       className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
