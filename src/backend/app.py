@@ -112,9 +112,13 @@ def extract_rubric_from_text(rubric_text):
     """
     print("\nDEBUG: Sending rubric extraction prompt to OpenAI...")
     response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a JSON formatting assistant. Only output valid JSON with no additional text."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.2,
+        response_format={"type": "json_object"}
     )
 
     structured_rubric = response.choices[0].message.content 
@@ -164,7 +168,7 @@ def evaluate_criterion(section, essay_text, client):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert essay evaluator. Provide structured, detailed feedback."},
                 {"role": "user", "content": prompt}
