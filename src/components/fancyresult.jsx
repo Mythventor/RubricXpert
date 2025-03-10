@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { MessageSquare, Send } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { parseFeedback } from './feedbackParser';
+import ReactMarkdown from 'react-markdown';
+
 
 const ResultsPage = () => {
   const navigate = useNavigate();
@@ -209,7 +211,7 @@ const ResultsPage = () => {
                           : 'bg-gray-100 text-gray-800'
                       }`}
                     >
-                      {msg.message}
+                      <ReactMarkdown>{msg.message}</ReactMarkdown>
                     </div>
                   </div>
                 ))
