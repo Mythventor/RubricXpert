@@ -39,7 +39,7 @@ const HomePage = () => {
       if (data.success) {
         navigate('/results', { 
           state: { 
-            feedback: data.feedback,
+            feedback: data,
             essayName: essayFile.name,
             rubricName: rubricFile.name
           } 

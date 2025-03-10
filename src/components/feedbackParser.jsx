@@ -1,45 +1,52 @@
 export function parseFeedback(feedbackData) {
   // Return default values if no feedback data is provided
-  if (!feedbackData) {
+  if (!feedbackData || !feedbackData.results || !Array.isArray(feedbackData.results)) {
+    console.error("Invalid feedback data format:", feedbackData);
     return {
       overallScore: 0,
       criteria: [],
-      generalFeedback: ""
+      generalFeedback: "No feedback data available."
     };
   }
 
   try {
-    // Regex to extract blocks in the format:
-    // **Block Name**: [score]/100
-    // Feedback: [feedback text]
-    const regex = /\*\*(.*?)\*\*\s*:\s*(\d+)[\/]?100\s*[\r\n]+Feedback:\s*([\s\S]*?)(?=\*\*|$)/g;
-    let blocks = [];
-    let match;
+    const results = feedbackData.results;
     
-    while ((match = regex.exec(feedbackData)) !== null) {
-      const name = match[1].trim();
-      const score = parseInt(match[2].trim(), 10);
-      const feedback = match[3].trim();
-      blocks.push({ name, score, feedback });
+    // Calculate overall score as average of all scores
+    const validScores = results.filter(item => item.score !== null && !isNaN(item.score));
+    const overallScore = validScores.length > 0 
+      ? Math.round(validScores.reduce((sum, item) => sum + item.score, 0) / validScores.length * 25) // Scale to 100 (assuming scores are 1-4)
+      : 0;
+    
+    // Format criteria
+    const criteria = results.map(item => ({
+      name: item.criterion || "Unnamed Criterion",
+      score: item.score !== null && !isNaN(item.score) ? item.score * 25 : 0, // Scale to 100 (assuming 1-4 scale)
+      feedback: item.feedback || ""
+    }));
+    
+    // Use the combined feedback as general feedback
+    let generalFeedback = "Overall Assessment:\n\n";
+    if (criteria.length > 0) {
+      generalFeedback += `This essay scored ${overallScore} out of 100 across ${criteria.length} criteria. `;
+      
+      // Add strengths and weaknesses
+      const strengths = criteria.filter(c => c.score >= 75).map(c => c.name);
+      const weaknesses = criteria.filter(c => c.score <= 50).map(c => c.name);
+      
+      if (strengths.length > 0) {
+        generalFeedback += `Strengths include ${strengths.join(', ')}. `;
+      }
+      
+      if (weaknesses.length > 0) {
+        generalFeedback += `Areas for improvement include ${weaknesses.join(', ')}.`;
+      }
     }
-    
-    if (blocks.length === 0) {
-      return {
-        overallScore: 0,
-        criteria: [],
-        generalFeedback: ""
-      };
-    }
-    
-    // The first block is the overall analysis
-    const overallAnalysis = blocks[0];
-    // The remaining blocks are individual criteria feedback
-    const criteria = blocks.slice(1);
     
     return {
-      overallScore: overallAnalysis.score,
+      overallScore,
       criteria,
-      generalFeedback: overallAnalysis.feedback
+      generalFeedback
     };
   } catch (error) {
     console.error("Error parsing feedback:", error);
