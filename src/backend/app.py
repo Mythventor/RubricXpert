@@ -85,45 +85,113 @@ def extract_rubric_from_text(rubric_text):
 
     prompt = f"""
     You are an AI trained to analyze essay grading rubrics. Your task is to extract 
-    and structure the grading criteria and their respective scoring levels in a JSON format.
+    and structure the grading criteria and their respective scoring levels EXACTLY as they appear in the original rubric.
 
     Given the following essay grading rubric:
 
     {rubric_text}
 
-    Extract the grading criteria and their descriptions, returning the output in JSON format like this:
+    CRITICALLY IMPORTANT INSTRUCTIONS:
+    1. Extract ONLY the main criteria that are explicitly defined as rows in the rubric table.
+    2. DO NOT create or infer additional criteria that don't exist in the original rubric.
+    3. DO NOT separate subcategories or descriptions as distinct criteria.
+    4. For each criterion, include ONLY the specific score levels that are defined in the rubric.
+    5. The score "Value" field must be the numerical value (e.g., 4, 3, 2, 1).
+    6. If the rubric contains multiple distinct sections (like separate rubrics for different assignments), 
+       treat them as separate criteria with their own respective scoring scales.
+    7. A criterion is typically a row in a rubric table with its own title and scoring descriptions.
+    
+    Return the output in this exact JSON format:
 
     {{
         "Criteria": [
             {{
-                "Name": "Criterion Name",
+                "Name": "Exact Criterion Name from Rubric",
                 "Scores": [
-                    {{"Score": 5, "Description": "Description for score 5"}},
-                    {{"Score": 4, "Description": "Description for score 4"}},
-                    {{"Score": 3, "Description": "Description for score 3"}},
-                    {{"Score": 2, "Description": "Description for score 2"}},
-                    {{"Score": 1, "Description": "Description for score 1"}}
+                    {{"Score": "Highest Score Label", "Description": "Description for highest score", "Value": highest_numeric_value}},
+                    {{"Score": "Next Score Label", "Description": "Description for next score", "Value": next_numeric_value}},
+                    ...and so on for all score levels
                 ]
             }},
-            ...
+            ...repeat for each criterion...
         ]
     }}
-    Make sure to extract all relevant details while preserving clarity.
     """
+    
     print("\nDEBUG: Sending rubric extraction prompt to OpenAI...")
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a JSON formatting assistant. Only output valid JSON with no additional text."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2,
-        response_format={"type": "json_object"}
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Consider using gpt-4o for complex rubrics
+            messages=[
+                {"role": "system", "content": "You are a precise document structure analyzer specializing in educational rubrics. Your task is to extract the exact criteria and scoring levels from rubrics without adding, splitting, or modifying the original structure. Return only valid JSON with no explanatory text."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,  # Lower temperature for more deterministic results
+            response_format={"type": "json_object"}
+        )
 
-    structured_rubric = response.choices[0].message.content 
-    #print("\nDEBUG: OpenAI Rubric Response:", structured_rubric[:500])  # Print first 500 chars
-    return structured_rubric  # This will be in JSON format
+        structured_rubric = response.choices[0].message.content
+        
+        # Validate JSON
+        try:
+            parsed_json = json.loads(structured_rubric)
+            
+            # Log the extracted criteria for debugging
+            criteria = parsed_json.get("Criteria", [])
+            print(f"\nDEBUG: Successfully extracted {len(criteria)} criteria")
+            
+            if criteria:
+                # Print names of extracted criteria
+                criteria_names = [criterion.get("Name", "Unnamed") for criterion in criteria]
+                print(f"\nDEBUG: Extracted criteria: {', '.join(criteria_names)}")
+                
+                # Check if Value field exists in all scores
+                for criterion in criteria:
+                    scores = criterion.get("Scores", [])
+                    if not all("Value" in score for score in scores):
+                        print(f"\nDEBUG: Missing Value field in criterion: {criterion.get('Name')}")
+                        # Add Value field if missing
+                        for i, score in enumerate(scores):
+                            if "Value" not in score and "Score" in score:
+                                try:
+                                    # Try to extract numeric value from Score field
+                                    score_text = score["Score"]
+                                    numeric_val = int(''.join(filter(str.isdigit, score_text))) if any(c.isdigit() for c in score_text) else (len(scores) - i)
+                                    score["Value"] = numeric_val
+                                    print(f"Added Value {numeric_val} to {score_text}")
+                                except:
+                                    # Fallback to position-based value
+                                    score["Value"] = len(scores) - i
+            
+            return json.dumps(parsed_json)
+            
+        except json.JSONDecodeError as e:
+            print(f"\nDEBUG: Invalid JSON from OpenAI: {e}")
+            return json.dumps({
+                "Criteria": [
+                    {
+                        "Name": "Error in Rubric Extraction",
+                        "Scores": [
+                            {"Score": "Error", "Description": "Could not parse rubric format", "Value": 0}
+                        ]
+                    }
+                ]
+            })
+            
+    except Exception as e:
+        print(f"\nDEBUG: Error calling OpenAI: {e}")
+        return json.dumps({
+            "Criteria": [
+                {
+                    "Name": "API Error",
+                    "Scores": [
+                        {"Score": "Error", "Description": f"API error: {str(e)}", "Value": 0}
+                    ]
+                }
+            ]
+        })
+
+        
 
 def evaluate_criterion(section, essay_text, client):
     criterion_name = section.get("Name", "Unnamed Criterion")
