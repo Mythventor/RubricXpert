@@ -44,8 +44,17 @@ npm run dev
 cd src
 cd backend
 
-# Ensure you have a valid OpenAI API Key in the .env file
-pip3 install flask flask-cors python-docx PyPDF2 openai python-dotenv
+# Create a .env file and put in OPENAI_API_KEY=API_KEY_GOES HERE
+# Ensure the OpenAI API Key is valid in the .env file
+
+# Enter Python3 virtual environment:
+python3 -m venv path/to/venv
+source path/to/venv/bin/activate
+
+# Install requirement
+pip3 install -r requirements.txt
+
+# Start
 python3 app.py
 
 # Enjoy the power of RubricXpert :)
