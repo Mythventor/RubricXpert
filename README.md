@@ -1,6 +1,6 @@
 # 📝 RubricXpert  
 
-**RubricXpert** is an AI-powered essay analysis tool that provides **instant, detailed feedback** based on specific rubric criteria. It helps students, educators, and professionals refine their writing to meet high standards effortlessly.  
+**RubricXpert** is an AI-powered essay analysis tool that provides **instant, detailed feedback** based on specific rubric criteria. It helps students refine their writing to meet high standards effortlessly.  
 
 ## 📌 About the Project  
 
