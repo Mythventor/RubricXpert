@@ -27,12 +27,10 @@ export function parseFeedback(feedbackData) {
     
     // Use the combined feedback as general feedback
     let generalFeedback = "Overall Assessment:\n\n";
-    if (criteria.length > 0) {
-      generalFeedback += `This essay scored ${overallScore} out of 100 across ${criteria.length} criteria. `;
-      
+    if (criteria.length > 0) {      
       // Add strengths and weaknesses
       const strengths = criteria.filter(c => c.score >= 75).map(c => c.name);
-      const weaknesses = criteria.filter(c => c.score <= 50).map(c => c.name);
+      const weaknesses = criteria.filter(c => c.score < 75).map(c => c.name);
       
       if (strengths.length > 0) {
         generalFeedback += `Strengths include ${strengths.join(', ')}. `;

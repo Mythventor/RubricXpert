@@ -221,16 +221,24 @@ def evaluate_criterion(section, essay_text, client):
     The essay will be scored based on the following standards:
     {rubric_formatted}
 
-    **Task:** Evaluate the essay based on this criterion. Provide:
-    1. The most appropriate score ({min_score} to {max_score}).
-    2. Justification for the given score.
-    3. Suggestions on how to improve the essay to achieve a higher score.
-
+    **Task:** Focus EXCLUSIVELY on evaluating the essay ONLY for the '{criterion_name}' criterion. 
+    
+    DO NOT:
+    - Provide a general overview of the essay
+    - Begin with phrases like "The essay demonstrates..." without directly relating to this specific criterion
+    - Discuss any aspects not directly related to this criterion
+    
+    DO:
+    1. Start your feedback by directly addressing how well the essay meets this specific criterion
+    2. Provide the most appropriate score ({min_score} to {max_score}) for this criterion only
+    3. Give specific examples from the essay that justify this score for this criterion
+    4. Suggest targeted improvements specifically for this criterion
+    
     Respond in the following JSON format:
     {{
         "criterion": "{criterion_name}",
         "score": ({min_score}-{max_score}),
-        "feedback": "Your feedback explanation."
+        "feedback": "Your focused feedback on this specific criterion."
     }}
     """
 

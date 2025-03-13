@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { TypeAnimation } from 'react-type-animation'; 
 
 const HomePage = () => {
   const navigate = useNavigate();
   const [essayFile, setEssayFile] = useState(null);
   const [rubricFile, setRubricFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   const handleEssayUpload = (event) => {
     setEssayFile(event.target.files[0]);
@@ -23,25 +23,8 @@ const HomePage = () => {
       return;
     }
 
-    setIsLoading(true);
-    setProgress(0);
-
-    // Increment progress gradually to 99% over ~6 seconds.
-    const incrementInterval = 100; // ms
-    const maxProgress = 99;
-    const totalTicks = 15000 / incrementInterval; // 60 ticks over 6 seconds
-    const incrementAmount = maxProgress / totalTicks;
-
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev < maxProgress) {
-          return Math.min(prev + incrementAmount, maxProgress);
-        }
-        return prev;
-      });
-    }, incrementInterval);
-
     try {
+      setIsLoading(true);
       const formData = new FormData();
       formData.append('essay', essayFile);
       formData.append('rubric', rubricFile);
@@ -50,31 +33,25 @@ const HomePage = () => {
         method: 'POST',
         body: formData,
       });
-      const data = await response.json();
 
-      // Clear timer, set progress to 100%, and navigate.
-      clearInterval(timer);
-      setProgress(100);
+      const data = await response.json();
 
       if (data.success) {
         navigate('/results', { 
           state: { 
-            feedback: data.feedback,
+            feedback: data,
             essayName: essayFile.name,
-            rubricName: rubricFile.name,
-          },
+            rubricName: rubricFile.name
+          } 
         });
       } else {
         alert('Analysis failed: ' + data.error);
-        setIsLoading(false);
-        setProgress(0);
       }
     } catch (error) {
-      clearInterval(timer);
       console.error('Error:', error);
       alert('Failed to analyze essay');
+    } finally {
       setIsLoading(false);
-      setProgress(0);
     }
   };
 
@@ -94,9 +71,29 @@ const HomePage = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center py-16">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Get Expert Feedback on Your Essays
-          </h1>
+          <div className='inline-block mb-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium'>AI-Powered Essay Analysis</div>
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            Get Expert Feedback on Your
+            <TypeAnimation
+              sequence={[
+                ' Essays',
+                2000, // wait 2s
+                ' Research Papers',
+                2000, // wait 2s
+                ' Personal Statements',
+                2000, // wait 2s
+              ' Cover Letters',
+                2000, // wait 2s
+              ' Academic Writing',
+                2000 // wait 2s
+                ]}
+      wrapper="span"
+      speed={25}
+      style={{ paddingLeft: '5px' }}
+      repeat={Infinity}
+      className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
+      />
+        </h1>
           <p className="text-xl text-gray-600 mb-8">
             Upload your essay and rubric for instant feedback
           </p>
@@ -116,7 +113,7 @@ const HomePage = () => {
                       accept=".pdf,.doc,.docx,.txt"
                     />
                     <Upload className="mx-auto h-10 w-10 text-gray-400" />
-                    <p className="mt-2 text-sm text-gray-600">Drop your essay here</p>
+                    <p className="mt-2 text-sm text-gray-600">Upload your essay here</p>
                   </div>
                 </label>
                 {essayFile && (
@@ -138,7 +135,7 @@ const HomePage = () => {
                       accept=".pdf,.doc,.docx,.txt"
                     />
                     <Upload className="mx-auto h-10 w-10 text-gray-400" />
-                    <p className="mt-2 text-sm text-gray-600">Drop your rubric here</p>
+                    <p className="mt-2 text-sm text-gray-600">Upload your rubric here</p>
                   </div>
                 </label>
                 {rubricFile && (
@@ -152,26 +149,13 @@ const HomePage = () => {
             <button
               onClick={handleAnalyze}
               disabled={isLoading || !essayFile || !rubricFile}
-              className={`relative w-full mt-6 py-2 px-4 rounded-md overflow-hidden ${
+              className={`w-full mt-6 py-2 px-4 rounded-md ${
                 isLoading || !essayFile || !rubricFile
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700'
               } text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
             >
-              {isLoading ? (
-                <>
-                  {/* The overlay div fills the button based on progress */}
-                  <div
-                    className="absolute inset-0 bg-blue-800 opacity-50 transition-all duration-100"
-                    style={{ width: `${progress}%` }}
-                  />
-                  <span className="relative z-10">
-                    Analyzing... {Math.floor(progress)}%
-                  </span>
-                </>
-              ) : (
-                'Analyze Essay'
-              )}
+              {isLoading ? 'Analyzing...' : 'Analyze Essay'}
             </button>
           </div>
         </div>
