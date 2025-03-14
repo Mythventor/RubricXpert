@@ -4,13 +4,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { parseFeedback } from './feedbackParser';
 import ReactMarkdown from 'react-markdown';
 
-
 const ResultsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
   // Assume that the backend sends raw feedback text via location.state
-  // (when navigating from the HomePage after a successful analysis)
   const rawFeedback = location.state && location.state.feedback;
   
   // Local state for parsed feedback
@@ -23,15 +21,7 @@ const ResultsPage = () => {
   
   // Reference for auto-scrolling chat
   const chatContainerRef = useRef(null);
-
-  // Helper function to convert a score to a level
-  const getLevel = (score) => {
-    if (score > 90) return "Excellent";
-    if (score > 80) return "Great";
-    if (score > 60) return "Average";
-    return "Needs Improvement";
-  };
-
+  
   // If no feedback was passed, use fallback data (or navigate back)
   useEffect(() => {
     if (rawFeedback) {
@@ -68,8 +58,8 @@ const ResultsPage = () => {
         // Create payload with message, feedback context, and chat history
         const payload = {
           message: chatMessage,
-          feedback: rawFeedback, // Send the raw feedback for context
-          chatHistory: chatHistory // Send chat history for context
+          feedback: rawFeedback,
+          chatHistory: chatHistory
         };
         
         // Make API call to your backend
@@ -91,7 +81,6 @@ const ResultsPage = () => {
           // Add AI response to chat
           setChatHistory(prev => [...prev, { user: false, message: data.response }]);
         } else {
-          // Handle error from API
           setChatHistory(prev => [...prev, { 
             user: false, 
             message: "Sorry, I encountered an error. Please try again." 
@@ -99,7 +88,6 @@ const ResultsPage = () => {
         }
       } catch (error) {
         console.error('Error sending message:', error);
-        // Add error message to chat
         setChatHistory(prev => [...prev, { 
           user: false, 
           message: "Sorry, there was a problem connecting to the server. Please try again later." 
@@ -145,11 +133,6 @@ const ResultsPage = () => {
             {/* Overall Analysis & General Feedback */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Overall Analysis</h2>
-              <div className="flex items-center justify-center">
-                <h2 className="text-4xl font-bold text-blue-600">
-                  {getLevel(parsedFeedback.overallScore)}
-                </h2>
-              </div>
               {parsedFeedback.generalFeedback && (
                 <div className="mt-6">
                   <p className="text-gray-600">{parsedFeedback.generalFeedback}</p>
@@ -163,14 +146,9 @@ const ResultsPage = () => {
               <div className="space-y-4">
                 {parsedFeedback.criteria.map((criterion, index) => (
                   <div key={index} className="border-b border-gray-200 pb-4 last:border-0">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {criterion.name}
-                      </h3>
-                      <span className="text-blue-600 font-semibold">
-                        {getLevel(criterion.score)}
-                      </span>
-                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {criterion.name}
+                    </h3>
                     <p className="text-gray-600">{criterion.feedback}</p>
                   </div>
                 ))}
