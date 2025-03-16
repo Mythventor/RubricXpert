@@ -613,20 +613,15 @@ def analyze_essay():
         essay_text = convert_to_text(essay_path)
         rubric_text = convert_to_text(rubric_path)
 
-        # Ensure temp files are removed safely
         if os.path.exists(essay_path):
             os.remove(essay_path)
         if os.path.exists(rubric_path):
             os.remove(rubric_path)
 
-        # STEP 1: Meta-analysis (you can replace this with your Longformer + MiniLM pipeline call)
         meta_result = process_rubric_and_pipeline(essay_text, rubric_text)
-        #print(meta_result["gpt_summary"])
-        #print(meta_result["structured_summary"])
 
-        # Split rubric into sections
         rubric_parsed = meta_result["rubric_parsed"]
-        # Step 1: Convert JSON string to a Python dictionary
+
         try:
             rubric_json = json.loads(rubric_parsed)  # Parse the JSON
             rubric_sections = rubric_json.get("Criteria", [])  # Extract "Criteria" safely
@@ -637,12 +632,11 @@ def analyze_essay():
         feedback_responses = []
         print("DEBUG: Analyzing Essay Based on Rubric")
 
-        # STEP 2: Parallel criterion evaluation
         print("DEBUG: Analyzing Essay Based on Rubric and Meta-Analysis")
 
         # Parallel processing of rubric sections
         feedback_responses = [] 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:  # Adjust workers as needed
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor: 
             futures = [executor.submit(evaluate_criterion, section, meta_result, client) for section in rubric_sections]
 
             for future in concurrent.futures.as_completed(futures):
@@ -657,71 +651,79 @@ def analyze_essay():
 
         return jsonify({
             'success': True,
-            'results': feedback_responses
+            'results': feedback_responses,
+            'essay_text': essay_text,  #original essay text
+            'paragraphs': meta_result["paragraphs"]
         })
 
     except Exception as e:
-        print(f"Server Error: {str(e)}")  # Debug print
+        print(f"Server Error: {str(e)}")  
+        return jsonify({
+            'success': True,  
+            'results': feedback_responses,  
+            'essay_text': essay_text, 
+            'paragraphs': meta_result["paragraphs"]
+        })
+
+@app.route('/chat', methods=['POST'])
+def handle_chat_message():
+    try:
+        data = request.json
+        if not data or 'message' not in data:
+            return jsonify({'error': 'Missing message'}), 400
+
+        user_message = data['message']
+        feedback_context = data.get('feedback', '')
+        chat_history = data.get('chatHistory', [])
+        essay_text = data.get('essay_text', '')
+
+        # Format the chat history for the OpenAI API
+        formatted_history = []
+        for msg in chat_history:
+            role = "user" if msg.get('user', False) else "assistant"
+            formatted_history.append({"role": role, "content": msg['message']})
+
+        # prompt with both feedback and essay context
+        system_prompt = f"""You are an expert essay evaluator assistant providing personalized feedback.
+
+FEEDBACK CONTEXT:
+{feedback_context}
+
+ESSAY CONTEXT:
+{essay_text}
+
+Your task is to:
+1. Provide helpful, concise explanations about the feedback
+2. If asked about specific parts of the essay, reference both the feedback and relevant essay content
+3. Give specific, actionable advice based on the feedback context
+4. When suggesting improvements, provide examples of better phrasing or structure
+5. Be encouraging but honest about areas that need improvement
+6. Focus on helping the student understand how to implement the feedback
+
+Keep responses clear, specific, and directly related to the student's question.
+"""
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(formatted_history)
+        messages.append({"role": "user", "content": user_message})
+
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7, 
+        )
+        assistant_response = completion.choices[0].message.content
+
+        return jsonify({
+            'success': True,
+            'response': assistant_response
+        })
+
+    except Exception as e:
+        print(f"Error in chat handler: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
-
-# @app.route('/chat', methods=['POST'])
-# def handle_chat_message():
-#    try:
-#        data = request.json
-#        if not data or 'message' not in data:
-#            return jsonify({'error': 'Missing message'}), 400
-
-
-#        user_message = data['message']
-#        feedback_context = data.get('feedback', '')
-#        chat_history = data.get('chatHistory', [])
-
-
-#        # Format the chat history for the OpenAI API
-#        formatted_history = []
-#        for msg in chat_history:
-#            role = "user" if msg.get('user', False) else "assistant"
-#            formatted_history.append({"role": role, "content": msg['message']})
-
-
-#        # Create system prompt
-#        system_prompt = f"""You are an expert essay evaluator assistant.
-#         Your task is to clarify and explain feedback given on an essay.
-
-
-#         FEEDBACK CONTEXT:
-#         {feedback_context}
-
-
-#         Provide helpful, concise explanations about the feedback. If the student asks for improvement suggestions, provide specific, actionable advice based on the feedback context.
-#         """
-#        messages = [{"role": "system", "content": system_prompt}]
-#        messages.extend(formatted_history)
-#        messages.append({"role": "user", "content": user_message})
-
-
-#        completion = client.chat.completions.create(
-#            model="gpt-4o-mini",
-#            messages=messages
-#        )
-#        assistant_response = completion.choices[0].message.content
-
-
-#        return jsonify({
-#            'success': True,
-#            'response': assistant_response
-#        })
-
-
-#    except Exception as e:
-#        print(f"Error in chat handler: {str(e)}")
-#        return jsonify({
-#            'success': False,
-#            'error': str(e)
-#        }), 500
    
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

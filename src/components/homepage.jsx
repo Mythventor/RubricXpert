@@ -30,7 +30,7 @@ const HomePage = () => {
     // Increment progress gradually to 99% over ~15 seconds.
     const incrementInterval = 100; // ms
     const maxProgress = 99;
-    const totalTicks = 15000 / incrementInterval;
+    const totalTicks = 50000 / incrementInterval;
     const incrementAmount = maxProgress / totalTicks;
 
     const timer = setInterval(() => {

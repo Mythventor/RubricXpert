@@ -55,11 +55,29 @@ const ResultsPage = () => {
       setIsLoading(true);
       
       try {
-        // Create payload with message, feedback context, and chat history
+        // Extract essay text from rawFeedback if available
+        let essayText = "";
+        
+        // Try to get essay text from different possible locations in the feedback data
+        if (rawFeedback && rawFeedback.essay_text) {
+          essayText = rawFeedback.essay_text;
+        } else if (rawFeedback && rawFeedback.paragraphs) {
+          essayText = rawFeedback.paragraphs.join('\n\n');
+        } else if (rawFeedback && rawFeedback.results && 
+                  rawFeedback.results[0] && 
+                  Array.isArray(rawFeedback.results[0].paragraphs)) {
+          // If paragraphs are in the first result item
+          essayText = rawFeedback.results[0].paragraphs.join('\n\n');
+        }
+        
+        console.log("Essay text extracted:", essayText ? "Yes (length: " + essayText.length + ")" : "No");
+        
+        // Create payload with message, feedback context, chat history, and essay
         const payload = {
           message: chatMessage,
-          feedback: rawFeedback,
-          chatHistory: chatHistory
+          feedback: JSON.stringify(rawFeedback), // Stringify the full feedback object
+          chatHistory: chatHistory,
+          essay_text: essayText
         };
         
         // Make API call to your backend
@@ -72,7 +90,7 @@ const ResultsPage = () => {
         });
         
         if (!response.ok) {
-          throw new Error('Network response was not ok');
+          throw new Error('Network response was not ok: ' + response.status);
         }
         
         const data = await response.json();
@@ -83,30 +101,20 @@ const ResultsPage = () => {
         } else {
           setChatHistory(prev => [...prev, { 
             user: false, 
-            message: "Sorry, I encountered an error. Please try again." 
+            message: "Sorry, I encountered an error: " + (data.error || "Unknown error") 
           }]);
         }
       } catch (error) {
         console.error('Error sending message:', error);
         setChatHistory(prev => [...prev, { 
           user: false, 
-          message: "Sorry, there was a problem connecting to the server. Please try again later." 
+          message: "Sorry, there was a problem connecting to the server: " + error.message 
         }]);
       } finally {
         setIsLoading(false);
       }
     }
   };
-
-  if (!parsedFeedback) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl text-gray-600">Loading feedback...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -144,14 +152,14 @@ const ResultsPage = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Detailed Feedback</h2>
               <div className="space-y-4">
-                {parsedFeedback.criteria.map((criterion, index) => (
-                  <div key={index} className="border-b border-gray-200 pb-4 last:border-0">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {criterion.name}
-                    </h3>
-                    <p className="text-gray-600">{criterion.feedback}</p>
-                  </div>
-                ))}
+              {parsedFeedback && parsedFeedback.criteria && parsedFeedback.criteria.map((criterion, index) => (
+              <div key={index} className="border-b border-gray-200 pb-4 last:border-0">
+                <h3 className="text-lg font-semibold text-gray-900">
+                    {criterion.name}
+                </h3>
+                <p className="text-gray-600">{criterion.feedback}</p>
+                </div>
+                    ))}
               </div>
             </div>
           </div>
