@@ -133,8 +133,7 @@ def split_paragraphs_gpt(essay_text):
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=2000  # Increase this if essays are long
-    )
+            )
 
     print("\n✅ GPT-4o returned split paragraphs.")  # Debug print
 
@@ -267,7 +266,6 @@ def extract_essay_theme_gpt(essay_text):
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=150  # Short because we only want 1 sentence
     )
 
     return response.choices[0].message.content.strip()
@@ -506,7 +504,6 @@ def evaluate_criterion(section, meta_result, client):
                     {"role": "user", "content": paragraph_prompt}
                 ],
                 temperature=0.2,
-                max_tokens=600
             )
             return json.loads(response.choices[0].message.content)
 
@@ -569,14 +566,15 @@ You are an expert essay evaluator. Based on the following paragraph-by-paragraph
 """
     # GPT API Call for final criterion summary
     try:
+
         final_response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a structured essay evaluator based off of meta-summary."},
                 {"role": "user", "content": final_summary_prompt}
             ],
             temperature=0.2,
-            max_tokens=600
+            response_format={"type": "json_object"}
         )
         final_feedback = json.loads(final_response.choices[0].message.content)
     except Exception as e:
