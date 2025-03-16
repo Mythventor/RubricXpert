@@ -433,7 +433,7 @@ def evaluate_criterion(section, meta_result, client):
     rubric_formatted = "\n".join([
         f"- **Score {len(scores) - idx}:** {score.get('Description', 'No description')}"
         for idx, score in enumerate(scores) if isinstance(score, dict)
-    ])
+    ]) 
 
     #print(f"[DEBUG] Rubric for '{criterion_name}':\n{rubric_formatted}")
 
@@ -523,51 +523,50 @@ def evaluate_criterion(section, meta_result, client):
     paragraph_feedback = []
     with ThreadPoolExecutor(max_workers=5) as executor:  # Adjust as needed
         futures = [executor.submit(evaluate_paragraph, idx, paragraph, paragraphs) for idx, paragraph in enumerate(paragraphs)]
-        for future in as_completed(futures):
+        for future in as_completed(futures): 
             paragraph_feedback.append(future.result())
  
     # ✅ Final summary aggregation using the paragraph feedback
     final_summary_prompt = f"""
-You are an expert essay evaluator. Based on the paragraph-by-paragraph evaluations and meta-summary below, write a final score and detailed summary under this criterion: **'{criterion_name}'**.
+You are an expert essay evaluator. Based on the following paragraph-by-paragraph evaluations for the criterion '{criterion_name}', write a final overall score and detailed summary for the entire essay under this criterion.
 
-### Meta-Summary (MANDATORY to use in your analysis if relevant to '{criterion_name}'):
-- **Essay Theme**: {meta_result["gpt_summary"]}
-- **Paragraph Focus**: {', '.join(meta_result["structured_summary"]['dominant_features'])}
-- **Coherence Issues**: {', '.join([issue for issue in meta_result["structured_summary"]['coherence_issues'] if issue]) if any(meta_result["structured_summary"]['coherence_issues']) else "None"}
-- **Logical Flow Score**: {meta_result["structured_summary"]['logical_flow']}
+### Essay Meta-Summary (Context for Reference):
+- **Theme**: {meta_result["gpt_summary"]}
+- **Dominant Features by Paragraph**: {', '.join(meta_result["structured_summary"]['dominant_features'])}
+- **Coherence Issues Noted**: {', '.join([issue for issue in meta_result["structured_summary"]['coherence_issues'] if issue]) if any(meta_result["structured_summary"]['coherence_issues']) else "None"}
+- **Logical Flow (Average Coherence Score)**: {meta_result["structured_summary"]['logical_flow']}
 
 ### Paragraph Evaluations:
-{json.dumps(paragraph_feedback, indent=2)} 
+{json.dumps(paragraph_feedback, indent=2)}
 
 ---
 
-### TASK — Follow strictly:
-1. **Give a final score** (between {min_score}-{max_score}) and **evaluate how well the essay meets '{criterion_name} and Scoring Rubric: {rubric_formatted} '**.
-2. **Use the meta-summary** to address coherence, flow, and paragraph transitions IF relevant to this criterion.
-3. Give **2-3 actionable suggestions**:
-   - **Quote specific phrases/issues** from at least 2-3 paragraphs.
-   - Embed improvements naturally inside explanations (NO bullet points). 
-   - For each improvement: 
-     - (a) **Rewrite awkward phrases fully** (e.g., "The author could write: '___'.").
-     - (b) For weak word choices, give **two vivid alternatives** (e.g., "'important' to 'pivotal' or 'crucial'").
-     - (c) If coherence/flow is weak, give **a model transition sentence** (e.g., "To improve flow: '___'.").
-4. Avoid vague advice — **be precise, fully grounded in essay text and meta-summary**.
-5. End with a reflection that explains how implementing your suggestions will improve the essay:
-   - Connect back to the theme of the essay, showing how the suggestions help clarify or deepen it.
-   - Explain how clarity, flow, and engagement will improve, if relevant.
-   - Describe the impact on the reader — for example, how these improvements will make the essay more persuasive, emotionally resonant, or easier to understand.
-   - Be concrete and specific — avoid vague statements. Tie your reflection directly to the essay's content and purpose.
+### TASK — Follow **strictly and deeply**:
+
+1. **Evaluate how well the essay meets '{criterion_name}' using the Scoring Rubric: {rubric_formatted}**. Focus entirely on what the rubric defines for this criterion and analyze how well the essay fulfills that. (DO NOT inclue score in summary)
+2. **Use meta-summary insights (coherence, flow) ONLY if directly relevant to this criterion and scoring rubric**. Avoid addressing unrelated issues (e.g., don’t address organization when grading focus).
+3. Provide **2-3 actionable, deeply text-based suggestions**:
+    - Quote **precise phrases or moments** from at least 2-3 different paragraphs. 
+    - Embed the suggestions as **natural parts of the analysis** (NO lists or bullet points).
+    - For each suggestion:
+        - (a) **Rewrite awkward, vague, or weak phrases fully** (e.g., "The author could write: '___'.").
+        - (b) For weak word choice, give **two vivid, precise alternatives** (e.g., "'important' to 'pivotal' or 'crucial'").
+        - (c) If flow/coherence undermines this criterion (e.g., it makes focus unclear or weakens voice), give a **model transition sentence** to solve it — but **do NOT address flow unless it affects this criterion**.
+4. Avoid vague advice — be **precise, detailed, and fully grounded in essay text and rubric for this criterion**.
+5. **End with a deep, insightful reflection fully tied to this criterion**:
+    - Explicitly connect suggestions to **the essay’s theme**, showing how they strengthen this specific criterion (e.g., how voice, word choice, focus relate to the theme of resilience and colonization).
+    - Explain how **clarity, precision, and emotional/analytical impact on the reader** will improve — but only as relevant to this criterion.
+    - Reflect on how **readers will better understand, engage with, or emotionally connect to the essay** if this criterion is strengthened.
+    - Be **specific and concrete** — avoid generic claims like "this will improve the essay" and **directly tie** to the purpose of the criterion.
 
 ---
 
-### Respond in THIS JSON ONLY:
+### **Respond ONLY in this JSON (DO NOT inclue score in summary):**
 {{
-    "criterion": "{criterion_name}",
-    "overall_score": ({min_score}-{max_score}),
-    "summary_feedback": "Detailed, meta-aware analysis following all points above. Concrete examples from essay text required. (Escape all quotes, no line breaks inside this string).""
+    "criterion": "{criterion_name}", 
+    "summary_feedback": "Detailed, meta-aware analysis following all points above. Concrete examples from essay text required. (Escape all quotes, no line breaks inside this string)."
 }}
 """
-
     # GPT API Call for final criterion summary
     try:
         final_response = client.chat.completions.create(
