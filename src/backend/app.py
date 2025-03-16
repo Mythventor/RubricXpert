@@ -14,6 +14,10 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import pdfplumber
+from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
 
 # Load environment variables
 load_dotenv()
@@ -68,7 +72,7 @@ def convert_to_text(file_path):
     except Exception as e:
         return f"Error converting file: {str(e)}"
 
-import pdfplumber
+
 
 def convert_pdf(file_path):
     """Extract rubric text from a PDF while preserving structure."""
@@ -143,10 +147,6 @@ def split_paragraphs_gpt(essay_text):
 
     return paragraphs
 
-from sklearn.decomposition import PCA
-from sklearn.metrics.pairwise import cosine_similarity
-
-from sklearn.preprocessing import normalize
 # META-ANALYSIS PIPLINE
 def compute_coherence_with_minilm(paragraphs):
     """
@@ -660,9 +660,7 @@ def analyze_essay():
         print(f"Server Error: {str(e)}")  
         return jsonify({
             'success': True,  
-            'results': feedback_responses,  
-            'essay_text': essay_text, 
-            'paragraphs': meta_result["paragraphs"]
+            'error': str(e)
         })
 
 @app.route('/chat', methods=['POST'])

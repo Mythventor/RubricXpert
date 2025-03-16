@@ -9,7 +9,7 @@ function App() {
     <HashRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/results" element={<ResultsPage />} />  {/* Add this route */}
+        <Route path="/results" element={<ResultsPage />} /> 
       </Routes>
     </HashRouter>
   )
