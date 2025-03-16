@@ -9,6 +9,10 @@ from PyPDF2 import PdfReader
 import re
 import json
 import concurrent.futures
+from transformers import AutoModel, AutoTokenizer, pipeline
+from sentence_transformers import SentenceTransformer
+import numpy as np
+import torch
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +25,14 @@ CORS(app)
 UPLOAD_FOLDER = 'temp_uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+# ✅ Load Longformer for full-essay encoding (handles 4,096 tokens)
+longformer_name = "allenai/longformer-large-4096"
+longformer_tokenizer = AutoTokenizer.from_pretrained(longformer_name)
+longformer_model = AutoModel.from_pretrained(longformer_name)
+
+# ✅ Load MiniLM for paragraph embeddings (helps track local context)
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Initialize OpenAI client
 client = OpenAI()
@@ -79,7 +91,204 @@ def convert_txt(file_path):
     """Convert TXT to text."""
     with open(file_path, 'r', encoding='utf-8') as file:
         return file.read()
+
+def split_paragraphs_gpt(essay_text):
+    """
+    Uses GPT-4o to intelligently split essay into paragraphs based on logical flow.
+    """
+    print("\n🔄 Asking GPT-4o to split essay into logical paragraphs...")
+
+    prompt = f"""
+    You are an expert essay grader.
+
+    Please analyze the following essay and split it into logical paragraphs.
+    Pay attention to topic shifts and where natural breaks should occur.
+    Return the output as a numbered list of paragraphs, like this:
     
+    1. First paragraph content here.
+    2. Second paragraph content here.
+    3. Third paragraph content here.
+    
+    Only return the list of paragraphs — no extra commentary.
+
+    Essay:
+    {essay_text}
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=2000  # Increase this if essays are long
+    )
+
+    print("\n✅ GPT-4o returned split paragraphs.")  # Debug print
+
+    # Optionally parse numbered list back into Python list (if needed)
+    output = response.choices[0].message.content.strip()
+    paragraphs = [p.split('. ', 1)[1] for p in output.split('\n') if p and '. ' in p]
+
+    return paragraphs
+
+from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import cosine_similarity
+
+from sklearn.preprocessing import normalize
+# META-ANALYSIS PIPLINE
+def compute_coherence_with_minilm(paragraphs):
+    """
+    Compute coherence between paragraphs using MiniLM (sentence-transformers).
+    """
+    #print("\n🔄 Computing coherence with MiniLM...")
+
+    # Generate embeddings using MiniLM
+    embeddings = embedding_model.encode(paragraphs)
+
+    # Normalize for cosine similarity
+    normalized_embeddings = normalize(embeddings)
+
+    # Compute pairwise coherence between adjacent paragraphs
+    coherence_scores = []
+    for i in range(1, len(normalized_embeddings)):
+        sim = cosine_similarity([normalized_embeddings[i-1]], [normalized_embeddings[i]])[0][0]
+        coherence_scores.append(sim)
+
+    avg_coherence = np.mean(coherence_scores) if coherence_scores else 0
+    #print(f"✅ MiniLM Average Coherence: {avg_coherence:.2f}")
+
+    return avg_coherence, coherence_scores
+
+def convert_context_to_text(paragraph_embeddings, context_vectors, paragraphs):
+    """
+    Converts Longformer embeddings into structured, human-readable text for GPT,
+    using both paragraph embeddings and accumulated context vectors.
+    Also uses MiniLM for coherence checking (external to embeddings).
+    """
+    print("\n🔄 Converting paragraph embeddings and context vectors into structured text...")  # 🔹 Debug print
+
+    # Combine paragraph embeddings with context vectors (mean of both)
+    combined_embeddings = [
+        (np.array(para_emb) + np.array(context_vec)) / 2
+        for para_emb, context_vec in zip(paragraph_embeddings, context_vectors)
+    ]
+
+    # Reduce dimensions with PCA
+    pca = PCA(n_components=5)
+    reduced_vectors = pca.fit_transform(combined_embeddings)
+
+    # Extract dominant features for each paragraph
+    dominant_features = np.argmax(reduced_vectors, axis=1)
+
+    # Compute coherence using MiniLM instead of Longformer embeddings
+    avg_coherence, coherence_scores = compute_coherence_with_minilm(paragraphs)
+
+    # Final accumulated context vector (last one) to be summarized
+    final_context_vector = context_vectors[-1] if context_vectors else [0] * 1024
+
+    # Generate structured summary
+    summary = {
+        "essay_theme": "Main ideas detected from context-aware embeddings.",
+        "logical_flow": f"Average coherence (MiniLM-based): {avg_coherence:.2f}",
+        "dominant_features": [f"Paragraph {i+1} focuses on feature {feat}" for i, feat in enumerate(dominant_features)],
+        "coherence_issues": [f"Paragraph {i+1} and {i+2} may not connect well." if sim < 0.5 else "" for i, sim in enumerate(coherence_scores)],
+        "context_summary_vector": f"Final accumulated context vector of length {len(final_context_vector)} (summarized as overall essay representation)."
+    }
+
+    #print("\n✅ Full Context-Aware Summary Generated:\n", summary)
+    return summary
+
+
+def encode_paragraphs_with_longformer(paragraphs):
+    """Encodes each paragraph with Longformer and analyzes raw coherence."""
+    
+    context_dim = 1024
+    context_vector = np.zeros((context_dim,))  # Used for context building (not coherence testing)
+    context_vectors = []  # Store smoothed context vectors for other purposes
+
+    paragraph_embeddings = []  # Store raw embeddings for coherence
+
+    for idx, para in enumerate(paragraphs):
+        print(f"\n🔹 Processing Paragraph {idx + 1}: {para[:60]}...")  
+
+        tokens = longformer_tokenizer(para, return_tensors="pt", truncation=True, padding="max_length", max_length=512)
+        with torch.no_grad():
+            outputs = longformer_model(**tokens)
+
+        # Use mean pooling for better representation of paragraph
+        para_embedding = outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
+
+        # Save raw paragraph embeddings for coherence
+        paragraph_embeddings.append(para_embedding.tolist())
+
+        # Also build smoothed context vector (for other context analysis purposes)
+        alpha = 0.7  
+        context_vector = alpha * context_vector + (1 - alpha) * para_embedding # recursive context formula
+        context_vectors.append(context_vector.tolist())  
+
+    # Convert raw paragraph embeddings to GPT-readable summary
+    context_summary = convert_context_to_text(paragraph_embeddings, context_vectors, paragraphs)
+
+    return context_summary  # Return both context and summary
+
+def extract_essay_theme_gpt(essay_text):
+    """
+    Uses GPT to extract a clear, single-sentence essay theme.
+    """
+    print("\n🔄 Asking GPT to extract essay theme...")  # Debug print
+
+    prompt = f"""
+    You are an expert essay evaluator.
+
+    Please read the following essay and write ONE sentence that clearly describes the main theme or central idea of the essay.
+
+    Do NOT give a summary. Just ONE sentence that captures the overall theme.
+
+    Essay:
+    {essay_text}
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=150  # Short because we only want 1 sentence
+    )
+
+    return response.choices[0].message.content.strip()
+
+
+def process_essay_pipeline(essay_text):
+    """
+    Runs the full pipeline: 
+    1. Converts essay file to text
+    2. Splits into paragraphs
+    3. Encodes paragraphs with Longformer
+    4. Generates a structured summary
+    5. Asks GPT to write a human-readable summary
+
+    Args:
+        file_path (str): Path to the essay file (.pdf, .docx, .txt)
+
+    Returns:
+        dict: Full pipeline output including raw text, paragraphs, embeddings, structured summary, and GPT final summary.
+    """
+    paragraphs = split_paragraphs_gpt(essay_text)
+
+    # Step 3: Encode paragraphs using Longformer (builds contextual embeddings)
+    context_summary = encode_paragraphs_with_longformer(paragraphs)
+
+    # Step 4: Send structured summary to GPT for a human-readable explanation
+    theme = extract_essay_theme_gpt(essay_text)
+
+    # Step 5: Return structured output
+    result = {
+        "structured_summary": context_summary,
+        "gpt_summary": theme,
+        "paragraphs": paragraphs
+    }
+
+    return result
+
 def extract_rubric_from_text(rubric_text):
     """Uses OpenAI API to extract and structure the rubric properly."""
 
@@ -193,10 +402,12 @@ def extract_rubric_from_text(rubric_text):
 
         
 
-def evaluate_criterion(section, essay_text, client):
+def evaluate_criterion(section, meta_result, client):
     criterion_name = section.get("Name", "Unnamed Criterion")
     scores = section.get("Scores", [])
+    paragraphs = meta_result["paragraphs"]
 
+    # Format rubric as readable list
     rubric_formatted = "\n".join([
         f"- **Score {len(scores) - idx}:** {score.get('Description', 'No description')}"
         for idx, score in enumerate(scores) if isinstance(score, dict)
@@ -207,68 +418,129 @@ def evaluate_criterion(section, essay_text, client):
     score_values = sorted([
         score.get("Value") for score in scores if isinstance(score, dict) and isinstance(score.get("Value"), (int, float))
     ])
-
     min_score, max_score = (score_values[0], score_values[-1]) if score_values else (1, len(scores))
 
-    prompt = f"""
-    You are an AI trained to evaluate essays using a structured grading rubric.
+    theme = meta_result["gpt_summary"]
+    # Paragraph-specific evaluations
+    paragraph_feedback = []
+    for idx, paragraph in enumerate(paragraphs):
+         # Extract meta elements safely
+        dominant_feature = meta_result["structured_summary"]['dominant_features'][idx]
+        coherence_issue = (
+            meta_result["structured_summary"]['coherence_issues'][idx - 1]
+            if idx > 0 and (idx - 1) < len(meta_result["structured_summary"]['coherence_issues']) and meta_result["structured_summary"]['coherence_issues'][idx - 1] != ""
+            else "None"
+        )
 
-    ### Essay to Evaluate:
-    {essay_text}
+        paragraph_prompt = f"""
+        You are an AI trained to evaluate essays using a structured grading rubric.
 
-    ### Grading Criterion: {criterion_name}
+        ### Essay Meta-Summary (for context):
+        - **Theme**: {theme}
+        - **Dominant Feature of this paragraph**: {dominant_feature}
+        - **Coherence Issue with previous paragraph**: {coherence_issue}
 
-    The essay will be scored based on the following standards:
-    {rubric_formatted}
+        ### Paragraph {idx + 1} to Evaluate:
+        {paragraph}
 
-    **Task:** Focus EXCLUSIVELY on evaluating the essay ONLY for the '{criterion_name}' criterion. 
+        ### Grading Criterion:
+        {criterion_name}
+
+        ### Scoring Rubric:
+        {rubric_formatted}
+
+        ### TASK:
+        Focus ONLY on evaluating **this paragraph** for the **'{criterion_name}'** criterion.
+
+        DO NOT:
+        - Evaluate other aspects of the essay.
+        - Comment on overall essay quality or unrelated sections.
+
+        DO:
+        1. Give a score between {min_score} and {max_score}.
+        2. Provide clear, focused feedback justifying the score.
+        3. If issues are present, suggest specific improvements tied to this criterion.
+
+        ### RESPOND IN THIS JSON FORMAT ONLY:
+        {{
+            "paragraph": {idx + 1},
+            "criterion": "{criterion_name}",
+            "score": (number between {min_score}-{max_score}),
+            "feedback": "Your focused feedback for this paragraph and criterion."
+        }}
+        """
+
+        # GPT API Call for paragraph
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are an expert essay evaluator. Stay strictly on task."},
+                    {"role": "user", "content": paragraph_prompt}
+                ],
+                temperature=0.2,
+                max_tokens=600
+            )
+
+            feedback = response.choices[0].message.content
+            feedback_json = json.loads(feedback)  # Parse response
+            paragraph_feedback.append(feedback_json)
+
+        except Exception as e:
+            print(f"Error on paragraph {idx + 1}: {e}")
+            paragraph_feedback.append({
+                "paragraph": idx + 1,
+                "criterion": criterion_name,
+                "score": None,
+                "feedback": f"Error analyzing paragraph: {e}"
+            })
+
+    # Final summary aggregation
+    final_summary_prompt = f"""
+    You are an expert essay evaluator. Based on the following paragraph-by-paragraph evaluations for the criterion '{criterion_name}', write a final overall score and summary for the entire essay under this criterion.
+    ### Essay Meta-Summary (Context for Reference):
+    - **Theme**: {meta_result["gpt_summary"]}
+    - **Dominant Features by Paragraph**: {', '.join(meta_result["structured_summary"]['dominant_features'])}
+    - **Coherence Issues Noted**: {', '.join([issue for issue in meta_result["structured_summary"]['coherence_issues'] if issue]) if any(meta_result["structured_summary"]['coherence_issues']) else "None"}
+    - **Logical Flow (Average Coherence Score)**: {meta_result["structured_summary"]['logical_flow']}
     
-    DO NOT:
-    - Provide a general overview of the essay
-    - Begin with phrases like "The essay demonstrates..." without directly relating to this specific criterion
-    - Discuss any aspects not directly related to this criterion
-    
-    DO:
-    1. Start your feedback by directly addressing how well the essay meets this specific criterion
-    2. Provide the most appropriate score ({min_score} to {max_score}) for this criterion only
-    3. Give specific examples from the essay that justify this score for this criterion
-    4. Suggest targeted improvements specifically for this criterion
-    
-    Respond in the following JSON format:
+    ### Paragraph Evaluations:
+    {json.dumps(paragraph_feedback, indent=2)}
+
+    **Task:**
+    - Aggregate feedback into a cohesive summary.
+    - Provide an overall score ({min_score}-{max_score}) for the essay on this criterion.
+
+    Respond in JSON format:
     {{
         "criterion": "{criterion_name}",
-        "score": ({min_score}-{max_score}),
-        "feedback": "Your focused feedback on this specific criterion."
+        "overall_score": ({min_score}-{max_score}),
+        "summary_feedback": "Final feedback summarizing the entire essay's performance on this criterion."
     }}
     """
 
     try:
-        response = client.chat.completions.create(
+        final_response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an expert essay evaluator. Provide structured, detailed feedback."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "You are a structured essay evaluator."},
+                {"role": "user", "content": final_summary_prompt}
             ],
             temperature=0.2,
-            max_tokens=800
+            max_tokens=600
         )
-
-        feedback = response.choices[0].message.content
-
-        # Try parsing JSON response
-        try:
-            feedback_json = json.loads(feedback)
-        except json.JSONDecodeError:
-            # Fallback parsing
-            match = re.search(r'"score":\s*(\d)', feedback)
-            score = int(match.group(1)) if match else None
-            feedback_json = {"criterion": criterion_name, "score": score, "feedback": feedback.strip()}
-
-        return feedback_json
-
+        final_feedback = json.loads(final_response.choices[0].message.content)
     except Exception as e:
-        print(f"Error while evaluating criterion '{criterion_name}': {e}")
-        return {"criterion": criterion_name, "score": None, "feedback": f"Error: {str(e)}"}
+        final_feedback = {
+            "criterion": criterion_name,
+            "overall_score": None,
+            "summary_feedback": f"Error during final summary: {e}"
+        }
+
+    return {
+        "criterion": criterion_name,
+        "final_summary": final_feedback
+    }
 
 @app.route('/test', methods=['GET'])
 def test():
@@ -301,7 +573,7 @@ def analyze_essay():
             os.remove(rubric_path)
 
         # Split rubric into sections
-        # ✅ Step 1: Convert JSON string to a Python dictionary
+        # Step 1: Convert JSON string to a Python dictionary
         try:
             rubric_json = json.loads(rubric_parsed)  # Parse the JSON
             rubric_sections = rubric_json.get("Criteria", [])  # Extract "Criteria" safely
@@ -312,10 +584,18 @@ def analyze_essay():
         feedback_responses = []
         print("DEBUG: Analyzing Essay Based on Rubric")
 
+        # STEP 1: Meta-analysis (you can replace this with your Longformer + MiniLM pipeline call)
+        meta_result = process_essay_pipeline(essay_text)
+        print(meta_result["gpt_summary"])
+        print(meta_result["structured_summary"])
+
+        # STEP 2: Parallel criterion evaluation
+        print("DEBUG: Analyzing Essay Based on Rubric and Meta-Analysis")
+
         # Parallel processing of rubric sections
-        feedback_responses = []
+        feedback_responses = [] 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:  # Adjust workers as needed
-            futures = [executor.submit(evaluate_criterion, section, essay_text, client) for section in rubric_sections]
+            futures = [executor.submit(evaluate_criterion, section, meta_result, client) for section in rubric_sections]
 
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -339,61 +619,61 @@ def analyze_essay():
             'error': str(e)
         }), 500
 
-@app.route('/chat', methods=['POST'])
-def handle_chat_message():
-   try:
-       data = request.json
-       if not data or 'message' not in data:
-           return jsonify({'error': 'Missing message'}), 400
+# @app.route('/chat', methods=['POST'])
+# def handle_chat_message():
+#    try:
+#        data = request.json
+#        if not data or 'message' not in data:
+#            return jsonify({'error': 'Missing message'}), 400
 
 
-       user_message = data['message']
-       feedback_context = data.get('feedback', '')
-       chat_history = data.get('chatHistory', [])
+#        user_message = data['message']
+#        feedback_context = data.get('feedback', '')
+#        chat_history = data.get('chatHistory', [])
 
 
-       # Format the chat history for the OpenAI API
-       formatted_history = []
-       for msg in chat_history:
-           role = "user" if msg.get('user', False) else "assistant"
-           formatted_history.append({"role": role, "content": msg['message']})
+#        # Format the chat history for the OpenAI API
+#        formatted_history = []
+#        for msg in chat_history:
+#            role = "user" if msg.get('user', False) else "assistant"
+#            formatted_history.append({"role": role, "content": msg['message']})
 
 
-       # Create system prompt
-       system_prompt = f"""You are an expert essay evaluator assistant.
-        Your task is to clarify and explain feedback given on an essay.
+#        # Create system prompt
+#        system_prompt = f"""You are an expert essay evaluator assistant.
+#         Your task is to clarify and explain feedback given on an essay.
 
 
-        FEEDBACK CONTEXT:
-        {feedback_context}
+#         FEEDBACK CONTEXT:
+#         {feedback_context}
 
 
-        Provide helpful, concise explanations about the feedback. If the student asks for improvement suggestions, provide specific, actionable advice based on the feedback context.
-        """
-       messages = [{"role": "system", "content": system_prompt}]
-       messages.extend(formatted_history)
-       messages.append({"role": "user", "content": user_message})
+#         Provide helpful, concise explanations about the feedback. If the student asks for improvement suggestions, provide specific, actionable advice based on the feedback context.
+#         """
+#        messages = [{"role": "system", "content": system_prompt}]
+#        messages.extend(formatted_history)
+#        messages.append({"role": "user", "content": user_message})
 
 
-       completion = client.chat.completions.create(
-           model="gpt-4o-mini",
-           messages=messages
-       )
-       assistant_response = completion.choices[0].message.content
+#        completion = client.chat.completions.create(
+#            model="gpt-4o-mini",
+#            messages=messages
+#        )
+#        assistant_response = completion.choices[0].message.content
 
 
-       return jsonify({
-           'success': True,
-           'response': assistant_response
-       })
+#        return jsonify({
+#            'success': True,
+#            'response': assistant_response
+#        })
 
 
-   except Exception as e:
-       print(f"Error in chat handler: {str(e)}")
-       return jsonify({
-           'success': False,
-           'error': str(e)
-       }), 500
+#    except Exception as e:
+#        print(f"Error in chat handler: {str(e)}")
+#        return jsonify({
+#            'success': False,
+#            'error': str(e)
+#        }), 500
    
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
