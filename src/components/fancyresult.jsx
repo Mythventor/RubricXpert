@@ -80,7 +80,7 @@ const ResultsPage = () => {
           essay_text: essayText
         };
         
-        // Make API call to your backend
+        // Make API call to backend
         const response = await fetch('http://127.0.0.1:5000/chat', {
           method: 'POST',
           headers: {
@@ -138,15 +138,7 @@ const ResultsPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Feedback Section */}
           <div className="space-y-6">
-            {/* Overall Analysis & General Feedback
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Overall Analysis</h2>
-              {parsedFeedback.generalFeedback && (
-                <div className="mt-6">
-                  <p className="text-gray-600">{parsedFeedback.generalFeedback}</p>
-                </div>
-              )}
-            </div> */}
+            {}
 
             {/* Detailed Criteria */}
             <div className="bg-white rounded-lg shadow-md p-6">

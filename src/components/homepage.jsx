@@ -27,7 +27,7 @@ const HomePage = () => {
     setIsLoading(true);
     setProgress(0);
 
-    // Increment progress gradually to 99% over ~15 seconds.
+    // Increment progress gradually to 99% over ~50 seconds.
     const incrementInterval = 100; // ms
     const maxProgress = 99;
     const totalTicks = 50000 / incrementInterval;
