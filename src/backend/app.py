@@ -13,6 +13,7 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import torch
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +21,12 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+def warmup_longformer():
+    print("\n⚙️ Warming up Longformer model...")
+    dummy_input = longformer_tokenizer("Warm-up sentence.", return_tensors="pt", truncation=True, padding="max_length", max_length=512)
+    with torch.no_grad():
+        _ = longformer_model(**dummy_input)
+    print("✅ Warm-up complete.")
 
 # Configure upload folder
 UPLOAD_FOLDER = 'temp_uploads'
@@ -30,6 +37,13 @@ if not os.path.exists(UPLOAD_FOLDER):
 longformer_name = "allenai/longformer-large-4096"
 longformer_tokenizer = AutoTokenizer.from_pretrained(longformer_name)
 longformer_model = AutoModel.from_pretrained(longformer_name)
+
+# Move model to GPU if available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+longformer_model.to(device)
+print(f"✅ Longformer is now on device: {device}")
+
+warmup_longformer()  # Warm it up once when app starts
 
 # ✅ Load MiniLM for paragraph embeddings (helps track local context)
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -211,6 +225,8 @@ def encode_paragraphs_with_longformer(paragraphs):
         print(f"\n🔹 Processing Paragraph {idx + 1}: {para[:60]}...")  
 
         tokens = longformer_tokenizer(para, return_tensors="pt", truncation=True, padding="max_length", max_length=512)
+        tokens = {k: v.to(device) for k, v in tokens.items()}  # ✅ Move to GPU
+
         with torch.no_grad():
             outputs = longformer_model(**tokens)
 
@@ -256,32 +272,38 @@ def extract_essay_theme_gpt(essay_text):
 
     return response.choices[0].message.content.strip()
 
-
-def process_essay_pipeline(essay_text):
+def process_rubric_and_pipeline(essay_text, rubric_text):
     """
-    Runs the full pipeline: 
-    1. Converts essay file to text
-    2. Splits into paragraphs
+    Runs the full pipeline with parallelized meta-analysis:
+    1. Splits essay into paragraphs (GPT-4o)
+    2. Extracts essay theme (GPT-4o)
     3. Encodes paragraphs with Longformer
-    4. Generates a structured summary
-    5. Asks GPT to write a human-readable summary
-
+    4. Generates structured summary
+    
     Args:
-        file_path (str): Path to the essay file (.pdf, .docx, .txt)
-
+        essay_text (str): Full essay text.
+        
     Returns:
-        dict: Full pipeline output including raw text, paragraphs, embeddings, structured summary, and GPT final summary.
+        dict: Full pipeline output including structured summary, GPT theme, and paragraphs.
     """
-    paragraphs = split_paragraphs_gpt(essay_text)
+    
+    # Step 1: Parallel execution of paragraph splitting and theme extraction
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_rubric = executor.submit(extract_rubric_from_text, rubric_text)
+        future_split = executor.submit(split_paragraphs_gpt, essay_text)
+        future_theme = executor.submit(extract_essay_theme_gpt, essay_text)
 
-    # Step 3: Encode paragraphs using Longformer (builds contextual embeddings)
+        # Collect both results when ready
+        rubric_parsed = future_rubric.result()
+        paragraphs = future_split.result()
+        theme = future_theme.result()
+
+    # Step 2: Encode paragraphs using Longformer (contextual embeddings)
     context_summary = encode_paragraphs_with_longformer(paragraphs)
 
-    # Step 4: Send structured summary to GPT for a human-readable explanation
-    theme = extract_essay_theme_gpt(essay_text)
-
-    # Step 5: Return structured output
+    # Step 3: Return structured output
     result = {
+        'rubric_parsed': rubric_parsed,
         "structured_summary": context_summary,
         "gpt_summary": theme,
         "paragraphs": paragraphs
@@ -413,7 +435,7 @@ def evaluate_criterion(section, meta_result, client):
         for idx, score in enumerate(scores) if isinstance(score, dict)
     ])
 
-    print(f"[DEBUG] Rubric for '{criterion_name}':\n{rubric_formatted}")
+    #print(f"[DEBUG] Rubric for '{criterion_name}':\n{rubric_formatted}")
 
     score_values = sorted([
         score.get("Value") for score in scores if isinstance(score, dict) and isinstance(score.get("Value"), (int, float))
@@ -421,23 +443,26 @@ def evaluate_criterion(section, meta_result, client):
     min_score, max_score = (score_values[0], score_values[-1]) if score_values else (1, len(scores))
 
     theme = meta_result["gpt_summary"]
-    # Paragraph-specific evaluations
-    paragraph_feedback = []
-    for idx, paragraph in enumerate(paragraphs):
-         # Extract meta elements safely
+
+    # ✅ Function to evaluate a single paragraph
+    def evaluate_paragraph(idx, paragraph, paragraphs):
+        # Extract meta elements safely
         dominant_feature = meta_result["structured_summary"]['dominant_features'][idx]
         coherence_issue = (
             meta_result["structured_summary"]['coherence_issues'][idx - 1]
             if idx > 0 and (idx - 1) < len(meta_result["structured_summary"]['coherence_issues']) and meta_result["structured_summary"]['coherence_issues'][idx - 1] != ""
             else "None"
         )
+        prev_paragraph_summary = paragraphs[idx - 1][:150] + "..." if idx > 0 else "None"
 
+        # GPT prompt for paragraph evaluation
         paragraph_prompt = f"""
         You are an AI trained to evaluate essays using a structured grading rubric.
 
-        ### Essay Meta-Summary (for context):
+        ### Essay Meta-Summary (your context):
         - **Theme**: {theme}
         - **Dominant Feature of this paragraph**: {dominant_feature}
+        - **Previous Paragraph Summary**: {prev_paragraph_summary}
         - **Coherence Issue with previous paragraph**: {coherence_issue}
 
         ### Paragraph {idx + 1} to Evaluate:
@@ -459,18 +484,20 @@ def evaluate_criterion(section, meta_result, client):
         DO:
         1. Give a score between {min_score} and {max_score}.
         2. Provide clear, focused feedback justifying the score.
-        3. If issues are present, suggest specific improvements tied to this criterion.
+        3. Suggest 1 specific actionable improvements, quoting from the essay text, tied to this criterion.
 
         ### RESPOND IN THIS JSON FORMAT ONLY:
         {{
             "paragraph": {idx + 1},
             "criterion": "{criterion_name}",
             "score": (number between {min_score}-{max_score}),
-            "feedback": "Your focused feedback for this paragraph and criterion."
+            "feedback": "Focused feedback for this paragraph and criterion.",
+            "suggestions": [
+                "Specific actionable suggestion 1."
+            ]
         }}
         """
 
-        # GPT API Call for paragraph
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -481,49 +508,71 @@ def evaluate_criterion(section, meta_result, client):
                 temperature=0.2,
                 max_tokens=600
             )
-
-            feedback = response.choices[0].message.content
-            feedback_json = json.loads(feedback)  # Parse response
-            paragraph_feedback.append(feedback_json)
+            return json.loads(response.choices[0].message.content)
 
         except Exception as e:
             print(f"Error on paragraph {idx + 1}: {e}")
-            paragraph_feedback.append({
+            return {
                 "paragraph": idx + 1,
                 "criterion": criterion_name,
                 "score": None,
                 "feedback": f"Error analyzing paragraph: {e}"
-            })
+            }
 
-    # Final summary aggregation
+    # ✅ Parallel processing of paragraph evaluations
+    paragraph_feedback = []
+    with ThreadPoolExecutor(max_workers=5) as executor:  # Adjust as needed
+        futures = [executor.submit(evaluate_paragraph, idx, paragraph, paragraphs) for idx, paragraph in enumerate(paragraphs)]
+        for future in as_completed(futures):
+            paragraph_feedback.append(future.result())
+ 
+    # ✅ Final summary aggregation using the paragraph feedback
     final_summary_prompt = f"""
-    You are an expert essay evaluator. Based on the following paragraph-by-paragraph evaluations for the criterion '{criterion_name}', write a final overall score and summary for the entire essay under this criterion.
-    ### Essay Meta-Summary (Context for Reference):
-    - **Theme**: {meta_result["gpt_summary"]}
-    - **Dominant Features by Paragraph**: {', '.join(meta_result["structured_summary"]['dominant_features'])}
-    - **Coherence Issues Noted**: {', '.join([issue for issue in meta_result["structured_summary"]['coherence_issues'] if issue]) if any(meta_result["structured_summary"]['coherence_issues']) else "None"}
-    - **Logical Flow (Average Coherence Score)**: {meta_result["structured_summary"]['logical_flow']}
-    
-    ### Paragraph Evaluations:
-    {json.dumps(paragraph_feedback, indent=2)}
+You are an expert essay evaluator. Based on the paragraph-by-paragraph evaluations and meta-summary below, write a final score and detailed summary under this criterion: **'{criterion_name}'**.
 
-    **Task:**
-    - Aggregate feedback into a cohesive summary.
-    - Provide an overall score ({min_score}-{max_score}) for the essay on this criterion.
+### Meta-Summary (MANDATORY to use in your analysis if relevant to '{criterion_name}'):
+- **Essay Theme**: {meta_result["gpt_summary"]}
+- **Paragraph Focus**: {', '.join(meta_result["structured_summary"]['dominant_features'])}
+- **Coherence Issues**: {', '.join([issue for issue in meta_result["structured_summary"]['coherence_issues'] if issue]) if any(meta_result["structured_summary"]['coherence_issues']) else "None"}
+- **Logical Flow Score**: {meta_result["structured_summary"]['logical_flow']}
 
-    Respond in JSON format:
-    {{
-        "criterion": "{criterion_name}",
-        "overall_score": ({min_score}-{max_score}),
-        "summary_feedback": "Final feedback summarizing the entire essay's performance on this criterion."
-    }}
-    """
+### Paragraph Evaluations:
+{json.dumps(paragraph_feedback, indent=2)}
 
+---
+
+### TASK — Follow strictly:
+1. **Give a final score** (between {min_score}-{max_score}) and **evaluate how well the essay meets '{criterion_name}'**.
+2. **Use the meta-summary** to address coherence, flow, and paragraph transitions IF relevant to this criterion.
+3. Give **2-3 actionable suggestions**:
+   - **Quote specific phrases/issues** from at least 2-3 paragraphs.
+   - Embed improvements naturally inside explanations (NO bullet points).
+   - For each improvement: 
+     - (a) **Rewrite awkward phrases fully** (e.g., "The author could write: '___'.").
+     - (b) For weak word choices, give **two vivid alternatives** (e.g., "'important' to 'pivotal' or 'crucial'").
+     - (c) If coherence/flow is weak, give **a model transition sentence** (e.g., "To improve flow: '___'.").
+4. Avoid vague advice — **be precise, fully grounded in essay text and meta-summary**.
+5. **End with a reflection** that explains how implementing your suggestions will improve the essay:
+   - Connect back to the **theme of the essay**.  
+   - Explain **how clarity, flow, and engagement will improve**.
+   - Mention the **impact on the reader** (e.g., "These improvements would make the essay more persuasive and emotionally resonant for readers.").
+
+---
+
+### Respond in THIS JSON ONLY:
+{{
+    "criterion": "{criterion_name}",
+    "overall_score": ({min_score}-{max_score}),
+    "summary_feedback": "Detailed, meta-aware analysis following all points above. Concrete examples from essay text required. (Escape all quotes, no line breaks inside this string).""
+}}
+"""
+
+    # GPT API Call for final criterion summary
     try:
         final_response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a structured essay evaluator."},
+                {"role": "system", "content": "You are a structured essay evaluator based off of meta-summary."},
                 {"role": "user", "content": final_summary_prompt}
             ],
             temperature=0.2,
@@ -531,17 +580,18 @@ def evaluate_criterion(section, meta_result, client):
         )
         final_feedback = json.loads(final_response.choices[0].message.content)
     except Exception as e:
+        print(f"[ERROR] Final summary issue for criterion '{criterion_name}': {e}")
         final_feedback = {
             "criterion": criterion_name,
             "overall_score": None,
             "summary_feedback": f"Error during final summary: {e}"
         }
 
+    # ✅ Return final structured output
     return {
         "criterion": criterion_name,
         "final_summary": final_feedback
     }
-
 @app.route('/test', methods=['GET'])
 def test():
     return jsonify({'message': 'API is working!'})
@@ -564,7 +614,6 @@ def analyze_essay():
 
         essay_text = convert_to_text(essay_path)
         rubric_text = convert_to_text(rubric_path)
-        rubric_parsed = extract_rubric_from_text(rubric_text)
 
         # Ensure temp files are removed safely
         if os.path.exists(essay_path):
@@ -572,7 +621,13 @@ def analyze_essay():
         if os.path.exists(rubric_path):
             os.remove(rubric_path)
 
+        # STEP 1: Meta-analysis (you can replace this with your Longformer + MiniLM pipeline call)
+        meta_result = process_rubric_and_pipeline(essay_text, rubric_text)
+        #print(meta_result["gpt_summary"])
+        #print(meta_result["structured_summary"])
+
         # Split rubric into sections
+        rubric_parsed = meta_result["rubric_parsed"]
         # Step 1: Convert JSON string to a Python dictionary
         try:
             rubric_json = json.loads(rubric_parsed)  # Parse the JSON
@@ -583,11 +638,6 @@ def analyze_essay():
 
         feedback_responses = []
         print("DEBUG: Analyzing Essay Based on Rubric")
-
-        # STEP 1: Meta-analysis (you can replace this with your Longformer + MiniLM pipeline call)
-        meta_result = process_essay_pipeline(essay_text)
-        print(meta_result["gpt_summary"])
-        print(meta_result["structured_summary"])
 
         # STEP 2: Parallel criterion evaluation
         print("DEBUG: Analyzing Essay Based on Rubric and Meta-Analysis")
