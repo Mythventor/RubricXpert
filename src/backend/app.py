@@ -297,9 +297,9 @@ def process_rubric_and_pipeline(essay_text, rubric_text):
         rubric_parsed = future_rubric.result()
         paragraphs = future_split.result()
         theme = future_theme.result()
-
+ 
     # Step 2: Encode paragraphs using Longformer (contextual embeddings)
-    context_summary = encode_paragraphs_with_longformer(paragraphs)
+    context_summary = encode_paragraphs_with_longformer(paragraphs) 
 
     # Step 3: Return structured output
     result = {
@@ -537,25 +537,26 @@ You are an expert essay evaluator. Based on the paragraph-by-paragraph evaluatio
 - **Logical Flow Score**: {meta_result["structured_summary"]['logical_flow']}
 
 ### Paragraph Evaluations:
-{json.dumps(paragraph_feedback, indent=2)}
+{json.dumps(paragraph_feedback, indent=2)} 
 
 ---
 
 ### TASK — Follow strictly:
-1. **Give a final score** (between {min_score}-{max_score}) and **evaluate how well the essay meets '{criterion_name}'**.
+1. **Give a final score** (between {min_score}-{max_score}) and **evaluate how well the essay meets '{criterion_name} and Scoring Rubric: {rubric_formatted} '**.
 2. **Use the meta-summary** to address coherence, flow, and paragraph transitions IF relevant to this criterion.
 3. Give **2-3 actionable suggestions**:
    - **Quote specific phrases/issues** from at least 2-3 paragraphs.
-   - Embed improvements naturally inside explanations (NO bullet points).
+   - Embed improvements naturally inside explanations (NO bullet points). 
    - For each improvement: 
      - (a) **Rewrite awkward phrases fully** (e.g., "The author could write: '___'.").
      - (b) For weak word choices, give **two vivid alternatives** (e.g., "'important' to 'pivotal' or 'crucial'").
      - (c) If coherence/flow is weak, give **a model transition sentence** (e.g., "To improve flow: '___'.").
 4. Avoid vague advice — **be precise, fully grounded in essay text and meta-summary**.
-5. **End with a reflection** that explains how implementing your suggestions will improve the essay:
-   - Connect back to the **theme of the essay**.  
-   - Explain **how clarity, flow, and engagement will improve**.
-   - Mention the **impact on the reader** (e.g., "These improvements would make the essay more persuasive and emotionally resonant for readers.").
+5. End with a reflection that explains how implementing your suggestions will improve the essay:
+   - Connect back to the theme of the essay, showing how the suggestions help clarify or deepen it.
+   - Explain how clarity, flow, and engagement will improve, if relevant.
+   - Describe the impact on the reader — for example, how these improvements will make the essay more persuasive, emotionally resonant, or easier to understand.
+   - Be concrete and specific — avoid vague statements. Tie your reflection directly to the essay's content and purpose.
 
 ---
 
