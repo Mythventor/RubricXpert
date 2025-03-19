@@ -4,7 +4,7 @@
 
 ## 📌 About the Project  
 
-RubricXpert enhances the essay-writing process by **analyzing text against rubric-based criteria** and offering **actionable suggestions** for improvement. The tool is designed to provide **interactive and constructive feedback**, ensuring that users produce high-quality work aligned with specific requirements.  
+RubricXpert enhances essay evaluation by mimicking human reading and analysis. It first builds a global understanding using Longformer encoders and refines coherence detection with MiniLM. GPT extracts the central theme, while rolling context preserves logical flow across paragraphs. Finally, GPT-4 generates nuanced, rubric-based feedback, ensuring deep, structured, and interactive suggestions. This multi-layered approach surpasses standard AI graders, delivering expert-level analysis efficiently.
 
 ---
 
