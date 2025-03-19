@@ -30,14 +30,14 @@ def warmup_longformer():
     dummy_input = longformer_tokenizer("Warm-up sentence.", return_tensors="pt", truncation=True, padding="max_length", max_length=512)
     with torch.no_grad():
         _ = longformer_model(**dummy_input)
-    print("✅ Warm-up complete.")
+    print("Warm-up complete.")
 
 # Configure upload folder
 UPLOAD_FOLDER = 'temp_uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# ✅ Load Longformer for full-essay encoding (handles 4,096 tokens)
+# Load Longformer for full-essay encoding (handles 4,096 tokens)
 longformer_name = "allenai/longformer-large-4096"
 longformer_tokenizer = AutoTokenizer.from_pretrained(longformer_name)
 longformer_model = AutoModel.from_pretrained(longformer_name)
@@ -45,11 +45,11 @@ longformer_model = AutoModel.from_pretrained(longformer_name)
 # Move model to GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 longformer_model.to(device)
-print(f"✅ Longformer is now on device: {device}")
+print(f"Longformer is now on device: {device}")
 
 warmup_longformer()  # Warm it up once when app starts
 
-# ✅ Load MiniLM for paragraph embeddings (helps track local context)
+# Load MiniLM for paragraph embeddings (helps track local context)
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Initialize OpenAI client
@@ -114,7 +114,7 @@ def split_paragraphs_gpt(essay_text):
     """
     Uses GPT-4o to intelligently split essay into paragraphs based on logical flow.
     """
-    print("\n🔄 Asking GPT-4o to split essay into logical paragraphs...")
+    print("\n Asking GPT-4o to split essay into logical paragraphs...")
 
     prompt = f"""
     You are an expert essay grader.
@@ -139,9 +139,8 @@ def split_paragraphs_gpt(essay_text):
         temperature=0.2,
             )
 
-    print("\n✅ GPT-4o returned split paragraphs.")  # Debug print
+    print("\n GPT-4o returned split paragraphs.")  
 
-    # Optionally parse numbered list back into Python list (if needed)
     output = response.choices[0].message.content.strip()
     paragraphs = [p.split('. ', 1)[1] for p in output.split('\n') if p and '. ' in p]
 
@@ -152,7 +151,7 @@ def compute_coherence_with_minilm(paragraphs):
     """
     Compute coherence between paragraphs using MiniLM (sentence-transformers).
     """
-    #print("\n🔄 Computing coherence with MiniLM...")
+    #print("\n Computing coherence with MiniLM...")
 
     # Generate embeddings using MiniLM
     embeddings = embedding_model.encode(paragraphs)
@@ -167,7 +166,7 @@ def compute_coherence_with_minilm(paragraphs):
         coherence_scores.append(sim)
 
     avg_coherence = np.mean(coherence_scores) if coherence_scores else 0
-    #print(f"✅ MiniLM Average Coherence: {avg_coherence:.2f}")
+    #print(f" MiniLM Average Coherence: {avg_coherence:.2f}")
 
     return avg_coherence, coherence_scores
 
@@ -177,7 +176,7 @@ def convert_context_to_text(paragraph_embeddings, context_vectors, paragraphs):
     using both paragraph embeddings and accumulated context vectors.
     Also uses MiniLM for coherence checking (external to embeddings).
     """
-    print("\n🔄 Converting paragraph embeddings and context vectors into structured text...")  # 🔹 Debug print
+    print("\n Converting paragraph embeddings and context vectors into structured text...") 
 
     # Combine paragraph embeddings with context vectors (mean of both)
     combined_embeddings = [
@@ -207,7 +206,7 @@ def convert_context_to_text(paragraph_embeddings, context_vectors, paragraphs):
         "context_summary_vector": f"Final accumulated context vector of length {len(final_context_vector)} (summarized as overall essay representation)."
     }
 
-    #print("\n✅ Full Context-Aware Summary Generated:\n", summary)
+    #print("\n Full Context-Aware Summary Generated:\n", summary)
     return summary
 
 
@@ -224,7 +223,7 @@ def encode_paragraphs_with_longformer(paragraphs):
         print(f"\n🔹 Processing Paragraph {idx + 1}: {para[:60]}...")  
 
         tokens = longformer_tokenizer(para, return_tensors="pt", truncation=True, padding="max_length", max_length=512)
-        tokens = {k: v.to(device) for k, v in tokens.items()}  # ✅ Move to GPU
+        tokens = {k: v.to(device) for k, v in tokens.items()}  #  Move to GPU
 
         with torch.no_grad():
             outputs = longformer_model(**tokens)
@@ -433,7 +432,6 @@ def evaluate_criterion(section, meta_result, client):
         for idx, score in enumerate(scores) if isinstance(score, dict)
     ]) 
 
-    #print(f"[DEBUG] Rubric for '{criterion_name}':\n{rubric_formatted}")
 
     score_values = sorted([
         score.get("Value") for score in scores if isinstance(score, dict) and isinstance(score.get("Value"), (int, float))
@@ -442,7 +440,7 @@ def evaluate_criterion(section, meta_result, client):
 
     theme = meta_result["gpt_summary"]
 
-    # ✅ Function to evaluate a single paragraph
+    # Function to evaluate a single paragraph
     def evaluate_paragraph(idx, paragraph, paragraphs):
         # Extract meta elements safely
         dominant_feature = meta_result["structured_summary"]['dominant_features'][idx]
@@ -504,6 +502,7 @@ def evaluate_criterion(section, meta_result, client):
                     {"role": "user", "content": paragraph_prompt}
                 ],
                 temperature=0.2,
+                max_tokens=600
             )
             return json.loads(response.choices[0].message.content)
 
@@ -516,14 +515,14 @@ def evaluate_criterion(section, meta_result, client):
                 "feedback": f"Error analyzing paragraph: {e}"
             }
 
-    # ✅ Parallel processing of paragraph evaluations
+    # Parallel processing of paragraph evaluations
     paragraph_feedback = []
     with ThreadPoolExecutor(max_workers=5) as executor:  # Adjust as needed
         futures = [executor.submit(evaluate_paragraph, idx, paragraph, paragraphs) for idx, paragraph in enumerate(paragraphs)]
         for future in as_completed(futures): 
             paragraph_feedback.append(future.result())
  
-    # ✅ Final summary aggregation using the paragraph feedback
+    # Final summary aggregation using the paragraph feedback
     final_summary_prompt = f"""
 You are an expert essay evaluator. Based on the following paragraph-by-paragraph evaluations for the criterion '{criterion_name}', write a final overall score and detailed summary for the entire essay under this criterion.
 
@@ -556,40 +555,41 @@ You are an expert essay evaluator. Based on the following paragraph-by-paragraph
     - Reflect on how **readers will better understand, engage with, or emotionally connect to the essay** if this criterion is strengthened.
     - Be **specific and concrete** — avoid generic claims like "this will improve the essay" and **directly tie** to the purpose of the criterion.
 
----
+--- 
 
 ### **Respond ONLY in this JSON (DO NOT inclue score in summary):**
 {{
-    "criterion": "{criterion_name}", 
+    "criterion": "{criterion_name}",
     "summary_feedback": "Detailed, meta-aware analysis following all points above. Concrete examples from essay text required. (Escape all quotes, no line breaks inside this string)."
 }}
-"""
+""" 
     # GPT API Call for final criterion summary
     try:
-
         final_response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a structured essay evaluator based off of meta-summary."},
                 {"role": "user", "content": final_summary_prompt}
             ],
             temperature=0.2,
-            response_format={"type": "json_object"}
-        )
+            max_tokens=600 
+        ) 
         final_feedback = json.loads(final_response.choices[0].message.content)
     except Exception as e:
         print(f"[ERROR] Final summary issue for criterion '{criterion_name}': {e}")
-        final_feedback = {
+        final_feedback = { 
             "criterion": criterion_name,
             "overall_score": None,
             "summary_feedback": f"Error during final summary: {e}"
         }
 
-    # ✅ Return final structured output
+    # Return final structured output
     return {
-        "criterion": criterion_name,
+        "criterion": criterion_name, 
         "final_summary": final_feedback
-    }
+    } 
+
+
 @app.route('/test', methods=['GET'])
 def test():
     return jsonify({'message': 'API is working!'})
